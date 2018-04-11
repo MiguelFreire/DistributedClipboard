@@ -1,0 +1,74 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "utils.h"
+
+void logs(char *msg, int type)
+{
+    time_t rawtime;
+    struct tm *t;
+
+    time(&rawtime);
+    t = localtime(&rawtime);
+
+    switch(type) {
+        case L_ERROR:
+            printf("\x1b[31m[%02d:%02d:%d][ERROR] - %s\x1b[0m \n", t->tm_hour, t->tm_min, t->tm_sec, msg);
+            break;
+        case L_INFO:
+            printf("\x1b[34m[%02d:%02d:%d][INFO] - %s\x1b[0m \n", t->tm_hour, t->tm_min, t->tm_sec,msg);
+            break;
+        default:
+            printf("[%02d:%02d:%d] - %s \n", t->tm_hour, t->tm_min, t->tm_sec, msg);
+            break;
+    }
+    
+}
+
+/* Memory Safe Function */
+void *smalloc(const size_t size)
+{
+    void *pointer = (void *)malloc(size);
+
+    if (pointer == NULL)
+        exit(0);
+
+    return pointer;
+}
+
+void *scalloc(const size_t n, const size_t size)
+{
+    void *pointer = (void *)calloc(n, size);
+
+    if (pointer == NULL)
+        exit(0);
+
+    return pointer;
+}
+
+void *srealloc(void *pointer, const size_t newSize)
+{
+    pointer = realloc(pointer, newSize);
+
+    if (pointer == NULL)
+    {
+        exit(0);
+    }
+
+    return pointer;
+}
+
+/*File Helper Functions*/
+void *sfopen(const char *fileName, const char *mode)
+{
+    FILE *file = fopen(fileName, mode);
+
+    if (file == NULL)
+    {
+        exit(0);
+    }
+
+    return file;
+}
