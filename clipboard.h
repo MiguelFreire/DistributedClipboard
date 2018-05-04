@@ -2,26 +2,35 @@
 #define CLIPBOARD_H
 
 #define CLIPBOARD_SOCKET "./CLIPBOARD_SOCKET"
+#define CLIENT_SOCKET "./CLIENT_SOCKET"
 #define INTERNET_SOCKET "INTERNET_SOCKET"
 #define NUM_REGIONS 10
-#define MESSAGE_MAX_SIZE 100
+#define MESSAGE_MAX_SIZE 1024
 #define PORT 1337
-
+#define BACKLOG 5
+#define TIMEOUT 30
 
 #define COPY 0
 #define PASTE 1
 
 #include <sys/types.h>
 
+typedef enum message_type
+{
+    Copy,
+    Paste,
+    Wait
+} message_type;
+
 typedef struct clipboard_message {
     int region;
     char data[MESSAGE_MAX_SIZE];
     int size;
-    int type;
+    message_type type;
 } clipboard_message;
 
 
-clipboard_message new_message(int region, char *data, int type);
+clipboard_message new_message(int region, char *data, message_type type);
 clipboard_message new_copy_message(int region, char *data);
 clipboard_message new_paste_message(int region);
 
