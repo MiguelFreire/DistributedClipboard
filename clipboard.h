@@ -8,36 +8,45 @@
 #define MESSAGE_MAX_SIZE 1024
 #define PORT 1337
 #define BACKLOG 5
-#define TIMEOUT 30
+#define TIMEOUT 5
 
 #define COPY 0
 #define PASTE 1
 
 #include <sys/types.h>
+#include <stdbool.h>
 
-typedef enum message_type
-{
-    Copy,
-    Paste,
-    Wait
+typedef enum message_type {
+    Request,
+    Response
 } message_type;
 
+typedef enum message_method
+{
+    Copy,
+    Paste
+} message_method;
+
 typedef struct clipboard_message {
-    int region;
-    char data[MESSAGE_MAX_SIZE];
-    int size;
     message_type type;
+    message_method method;
+    int region;
+    void *data;
+    int size;
+    bool status;
+    
 } clipboard_message;
 
-
-clipboard_message new_message(int region, char *data, message_type type);
-clipboard_message new_copy_message(int region, char *data);
+clipboard_message new_message(message_method method, int region, void *data, size_t count);
+clipboard_message new_copy_message(int region, void *data, size_t count);
 clipboard_message new_paste_message(int region);
+clipboard_message new_request(message_method method, int region, void *data, size_t count);
 
-
-int clipboard_connect(char * clipboard_dir);
+int clipboard_connect(char *clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_wait(int clipboard_id, int region, void *buf, size_t count);
 void clipboard_close(int clipboard_id);
+
+bool validate_region(int region);
 #endif

@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <string.h>
 #include <arpa/inet.h>
@@ -14,10 +15,6 @@
 #include "utils.h"
 
 
-int handle_request() {
-    
-}
-
 void usage() {
     printf("Usage: \n");
     printf("\t Single Mode: clipboard \n");
@@ -28,7 +25,7 @@ void usage() {
 
 int main(int argc, char **argv) {
 
-    char store[10][MESSAGE_MAX_SIZE]; //create store 
+    void * store[NUM_REGIONS]; //create store 
 
     if(argc == 1) {//single mode
         logs("Starting in single mode.", L_INFO);
@@ -68,8 +65,10 @@ int main(int argc, char **argv) {
         
         
         char buffer[MESSAGE_MAX_SIZE];
-        clipboard_message msg;
-        int message_size = 0;
+        clipboard_message request;
+        clipboard_message response;
+
+        int bytes = 0;
         int client;
         int addr_size = sizeof(client_addr);
 
@@ -84,11 +83,39 @@ int main(int argc, char **argv) {
             }
             if(fork() == 0) {
                 char bf[100];
+                
                 sprintf(bf, "Client %d connected", client);
                 logs((char *)bf, L_INFO);
-                read(client, &msg, sizeof(clipboard_message));
-                printf("Message received! - %s", msg.data);
-                write(client, &msg, sizeof(msg));
+                printf("Clipboard message size: %d\n", sizeof(clipboard_message));
+                while (read(client, &request, sizeof(clipboard_message)) > 0)
+                {
+                    printf("Entrei!\n");
+                    printf("Metodo: %d\n", request.method);
+                    switch (request.method)
+                    {
+                    case Copy:
+                        printf("Request Copy received! - %s \n", request.data);
+                        
+                        if(store[request.region] != NULL) 
+                            free(store[request.region]);
+
+                        store[request.region] = smalloc(request.size);
+                        memcpy(store[request.region], request.data, request.size);
+                        printf("LALALLAA\n");
+                        response.status = true;
+                        break;
+                    case Paste:  
+                        printf("Request Paste received! -  Region %d \n", request.region);
+                        response.status = true;
+                        memcpy(response.data, store[request.region], request.size);
+                        break;
+                    default:
+                        logs("Invalid Request method", L_ERROR);
+                    }
+                    printf("Teste \n");
+                    write(client, &response, sizeof(response));
+                }
+                
             }
 
         }
