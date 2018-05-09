@@ -1,17 +1,23 @@
+CC = gcc
+CFLAGS = -Wall -g
+
 all: clipboard client
 
-clipboard:	clipboard.o utils.o
-			gcc -o clipboard clipboard.o utils.o
-client:     client.o utils.o library.o
-			gcc -o client client.o utils.o library.o
-client.o:	client.c clipboard.h utils.o
-			gcc -c client.c -Wall
-clipboard.o: clipboard.c clipboard.h utils.o
-			gcc -c clipboard.c -Wall
-utils.o: 	utils.c utils.h
-			gcc -c utils.c -Wall
-library.o:  library.c clipboard.h
-			gcc -c library.c -Wall
+clipboard: clipboard.o utils.o
+			$(CC) $(CFLAGS) -o clipboard clipboard.o utils.o -lprotobuf-c
+client: client.o utils.o library.o cbmessage.pb-c.o 
+			$(CC) $(CFLAGS) -o client client.o utils.o library.o cbmessage.pb-c.o -lprotobuf-c
+clipboard.o: clipboard.c clipboard.h utils.h cbmessage.pb-c.h
+			$(CC) $(CFLAGS) -c clipboard.c
+client.o: client.c clipboard.h utils.h
+			$(CC) $(CFLAGS) -c client.c 
+utils.o:  utils.c utils.h
+			$(CC) $(CFLAGS) -c utils.c
+cbmessage.pb-c.o: cbmessage.pb-c.c cbmessage.pb-c.h
+			$(CC) $(CFLAGS) -c cbmessage.pb-c.c 
+library.o: library.c clipboard.h cbmessage.pb-c.h
+			$(CC) $(CFLAGS) -c library.c 
+
 clean:
 			rm -rf *.o
 			rm clipboard

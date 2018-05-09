@@ -1,0 +1,19 @@
+message CBMessage {
+
+    enum Type {
+        Request = 0;
+        Response = 1;
+    }
+
+    enum Method {
+        Copy = 0;
+        Paste = 1;
+    }
+
+    required Type type = 1;
+    required Method method = 2;
+    required uint32 region = 3;
+    optional bytes data = 4;
+    optional bool status = 5;
+
+}

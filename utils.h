@@ -21,4 +21,7 @@ void *srealloc(void *pointer, const size_t newSize);
 /*File Helper Functions*/
 void *sfopen(const char *fileName, const char *mode);
 
+/*Socket Helpers*/
+int readAll(int sock_fd, void* buf, int count);
+
 #endif

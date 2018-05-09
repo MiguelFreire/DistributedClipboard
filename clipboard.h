@@ -28,19 +28,23 @@ typedef enum message_method
 } message_method;
 
 typedef struct clipboard_message {
-    message_type type;
-    message_method method;
-    int region;
-    void *data;
-    int size;
-    bool status;
+    message_type type; //required
+    message_method method; //required
+    int region; //required
+    void *data; //byte stream - optional
+    int size; //optional
+    bool status; //optional 
     
 } clipboard_message;
 
-clipboard_message new_message(message_method method, int region, void *data, size_t count);
-clipboard_message new_copy_message(int region, void *data, size_t count);
-clipboard_message new_paste_message(int region);
-clipboard_message new_request(message_method method, int region, void *data, size_t count);
+typedef struct packed_message {
+    void *buf;
+    int size;
+} packed_message;
+
+
+
+packed_message new_request(message_method method, int region, void *data, size_t count);
 
 int clipboard_connect(char *clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);

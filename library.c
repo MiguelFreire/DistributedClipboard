@@ -12,55 +12,61 @@
 #include <stdbool.h>
 #include "clipboard.h"
 #include "utils.h"
+#include "cbmessage.pb-c.h";
 
 bool validate_region(int region) {
     return (region > 0 || region < NUM_REGIONS);
 }
 
-clipboard_message new_copy_message(int region, void *data, size_t count) { 
-    return new_message(Copy, region, data, count); 
-}
 
-clipboard_message new_paste_message(int region) { return new_message(Paste, region, NULL, 0); }
-
-clipboard_message new_request(message_method method, int region, void *data, size_t count) {
+packed_message new_request(message_method method, int region, void *data, size_t count) {
     
-    clipboard_message msg;
+    CBMessage msg = CBMESSAGE__INIT;
 
-    msg.type = Request;
+    void* buffer;
+    msg.type = CBMESSAGE__TYPE__Request;
+    packed_message package = {NULL,0};
+    int packed_size;
 
     switch(method) {
         case Copy:
-            msg = new_copy_message(region,data,count);
-            return msg;
+            msg.method = CBMESSAGE__METHOD__Copy;
+            msg.region = region;
+            msg.has_data = 1;
+            msg.data.data = data;
+            msg.data.len = count;
+
+            packed_size = cbmessage__get_packed_size(&msg);
+
+            buffer = smalloc(packed_size);
+            cbmessage__pack(&msg, buffer);
+            
+            package.buf = buffer;
+            package.size = packed_size;
+
+            return package;
             break;
+
         case Paste:
-            msg = new_paste_message(region);
-            return msg;
+            msg.method = CBMESSAGE__METHOD__Paste;
+            msg.region = region;
+
+            packed_size = cbmessage__get_packed_size(&msg);
+
+            buffer = smalloc(packed_size);
+            cbmessage__pack(&msg, buffer);
+
+            package.buf = buffer;
+            package.size = packed_size;
+
+            return package;
             break;
         default:
-            return msg;
+            return package;
             break;
     }
 }
 
-clipboard_message new_message(message_method method,int region, void *data, size_t count)
-{
-
-    clipboard_message msg;
-
-    msg.region = region;
-    msg.method = method;
-    msg.status = false;
-    if(count != 0) {
-        msg.data = smalloc(count);
-        memcpy(msg.data, data, count);
-    } 
-
-    msg.size = count;
-
-    return msg;
-}
 
 int clipboard_connect(char *clipboard_dir) {
     struct sockaddr_un clipboard_addr;
@@ -93,30 +99,22 @@ int clipboard_connect(char *clipboard_dir) {
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
     if(!validate_region(region) || count <= 0 || buf == NULL) return 0;
 
-    printf("Count : %d\n" , count);
+    CBMessage *unpacked_msg;
 
-
-    clipboard_message request = new_request(Copy, region, buf, count);
+    packed_message request = new_request(Copy, region, buf, count);
+    packed_message response;
     
-    printf("Request.Count: %d \n", request.size);
-    printf("Request.Data: %s\n", (char*) request.data);
-
-
-    clipboard_message response;
-
-    int bytes = 0;
-
-    bytes = write(clipboard_id, &request, sizeof(request));
-    printf("Sizeof Request: %d\n", sizeof(request));
-    printf("Bytes: %d\n", bytes);
+    int bytes = write(clipboard_id, &(request.buf), request.size);
 
     if(bytes != sizeof(request)) {
         logs("Could not send request", L_ERROR);
     }
-    printf("Bytes1: %d\n", sizeof(response));
-    bytes = read(clipboard_id, &response, sizeof(response));
-    printf("Bytes1: %d\n", bytes);
-    if(!response.status) {
+
+    bytes = read(clipboard_id, &(response.buf), sizeof(CBMessage));
+
+    cbmessage__unpack(unpacked_msg, sizeof(CBMessage), response.buf);
+
+    if(!unpacked_msg->status) {
         logs("Could not receive all bytesxxx", L_ERROR);
         return 0;
     }
@@ -128,23 +126,23 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
     if (!validate_region(region) || count <= 0 || buf == NULL) return 0;
 
-    clipboard_message request = new_request(Paste, region, buf, count);
-    clipboard_message response;
+    // clipboard_message *request = new_request(Paste, region, buf, count);
+    // clipboard_message response;
 
-    int bytes = 0;
+     int bytes = 0;
 
-    bytes = write(clipboard_id, &request, sizeof(request));
+    // bytes = write(clipboard_id, &request, sizeof(request));
 
-    if(bytes != sizeof(request)) {
-        logs("Could not send request", L_ERROR);
-    }
-    bytes= read(clipboard_id, &response, sizeof(response));
-    if(!response.status) {
-        logs("Could not receive all bytes", L_ERROR);
-        return 0;
-    }
-    logs ("Pasted successfuly!", L_INFO);
-    printf("Received - %s \n", response.data);
-    memcpy(buf, response.data, count);
+    // if(bytes != sizeof(request)) {
+    //     logs("Could not send request", L_ERROR);
+    // }
+    // bytes= read(clipboard_id, &response, sizeof(response));
+    // if(!response.status) {
+    //     logs("Could not receive all bytes", L_ERROR);
+    //     return 0;
+    // }
+    // logs ("Pasted successfuly!", L_INFO);
+
+    // memcpy(buf, response.data, count);
     return bytes;
 }

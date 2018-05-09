@@ -12,6 +12,7 @@
 #include <errno.h>
 
 #include "clipboard.h"
+#include "cbmessage.pb-c.h"
 #include "utils.h"
 
 
@@ -64,10 +65,9 @@ int main(int argc, char **argv) {
 
         
         
-        char buffer[MESSAGE_MAX_SIZE];
-        clipboard_message request;
-        clipboard_message response;
 
+        CBMessage *msg;
+        void *buffer;
         int bytes = 0;
         int client;
         int addr_size = sizeof(client_addr);
@@ -82,40 +82,9 @@ int main(int argc, char **argv) {
                 exit(-1);
             }
             if(fork() == 0) {
-                char bf[100];
-                
-                sprintf(bf, "Client %d connected", client);
-                logs((char *)bf, L_INFO);
-                printf("Clipboard message size: %d\n", sizeof(clipboard_message));
-                while (read(client, &request, sizeof(clipboard_message)) > 0)
-                {
-                    printf("Entrei!\n");
-                    printf("Metodo: %d\n", request.method);
-                    switch (request.method)
-                    {
-                    case Copy:
-                        printf("Request Copy received! - %s \n", request.data);
-                        
-                        if(store[request.region] != NULL) 
-                            free(store[request.region]);
+                logs("Client connected!", L_INFO);
+                bytes = readAll(socket_fd, buf)
 
-                        store[request.region] = smalloc(request.size);
-                        memcpy(store[request.region], request.data, request.size);
-                        printf("LALALLAA\n");
-                        response.status = true;
-                        break;
-                    case Paste:  
-                        printf("Request Paste received! -  Region %d \n", request.region);
-                        response.status = true;
-                        memcpy(response.data, store[request.region], request.size);
-                        break;
-                    default:
-                        logs("Invalid Request method", L_ERROR);
-                    }
-                    printf("Teste \n");
-                    write(client, &response, sizeof(response));
-                }
-                
             }
 
         }
