@@ -67,8 +67,11 @@ int main(int argc, char **argv) {
         
 
         CBMessage *msg;
-        void *buffer;
+        packed_message response;
+        uint8_t size_buffer[MESSAGE_MAX_SIZE];
+        void *data_buffer = NULL; //byte stream
         int bytes = 0;
+        size_t count = 0;
         int client;
         int addr_size = sizeof(client_addr);
 
@@ -83,8 +86,45 @@ int main(int argc, char **argv) {
             }
             if(fork() == 0) {
                 logs("Client connected!", L_INFO);
-                bytes = readAll(socket_fd, buf)
+                //First we read the request message with the information about size,region and method
+                bytes = read(client, size_buffer, MESSAGE_MAX_SIZE);
+                if(bytes == -1) {
+                    logs(strerror(errno), L_ERROR);
+                }
+                printf("Received %d\n", bytes);
+                //Unpacks from proto to c format
+                msg = cbmessage__unpack(NULL, bytes, size_buffer);
+                
+                //Get data size
+                count = msg->size;
+                printf("Region: %d, Method: %d, Size:%d \n", msg->region, msg->method, msg->size);
+                //Alloc data receive buffer
+                data_buffer = smalloc(count);
+                response = new_response(msg->method,
+                                        msg->region,
+                                        NULL,
+                                        0,
+                                        true);
+                cbmessage__free_unpacked(msg, NULL);
 
+                bytes = write(client, response.buf, response.size);
+                if (bytes == -1)
+                {
+                    logs(strerror(errno), L_ERROR);
+                }
+                bytes = sread(client, data_buffer, count);
+                if (bytes == -1)
+                {
+                    logs(strerror(errno), L_ERROR);
+                }
+
+                logs("Received2!", L_INFO);
+                msg = cbmessage__unpack(NULL, count, data_buffer);
+                printf("Received: %s\n", msg->data.data);
+            
+
+                cbmessage__free_unpacked(msg, NULL);
+                free(data_buffer);
             }
 
         }

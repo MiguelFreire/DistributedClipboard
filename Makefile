@@ -3,8 +3,8 @@ CFLAGS = -Wall -g
 
 all: clipboard client
 
-clipboard: clipboard.o utils.o
-			$(CC) $(CFLAGS) -o clipboard clipboard.o utils.o -lprotobuf-c
+clipboard: clipboard.o utils.o library.o cbmessage.pb-c.o 
+			$(CC) $(CFLAGS) -o clipboard clipboard.o utils.o cbmessage.pb-c.o library.o -lprotobuf-c
 client: client.o utils.o library.o cbmessage.pb-c.o 
 			$(CC) $(CFLAGS) -o client client.o utils.o library.o cbmessage.pb-c.o -lprotobuf-c
 clipboard.o: clipboard.c clipboard.h utils.h cbmessage.pb-c.h
@@ -24,4 +24,5 @@ clean:
 			rm client
 			rm CLIPBOARD_SOCKET
 			rm APP_SOCKET_*
-			
+proto:
+			protoc --c_out=. cbmessage.proto	

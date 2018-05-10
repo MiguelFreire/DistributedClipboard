@@ -73,12 +73,12 @@ void *sfopen(const char *fileName, const char *mode)
     return file;
 }
 
-int readAll(int sock_fd, void *buf, int count)
+int sread(int sock_fd, void *buf, int count)
 {
     int total = 0;
     int bytes_remaining = count;
     int bytes_received = 0;
-    
+
     while (total < count)
     {   
         bytes_received = read(sock_fd, buf + total, bytes_remaining);
@@ -87,4 +87,19 @@ int readAll(int sock_fd, void *buf, int count)
     }
 
     return bytes_received;
+}
+
+int swrite(int sock_fd, void *buf, int count) {
+    int total = 0;
+    int bytes_remaining = count;
+    int bytes_sent = 0;
+
+    while (total < count)
+    {
+        bytes_sent = read(sock_fd, buf + total, bytes_remaining);
+        total += bytes_sent;
+        bytes_remaining -= bytes_sent;
+    }
+
+    return bytes_sent;
 }

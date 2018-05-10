@@ -23,5 +23,7 @@ void *sfopen(const char *fileName, const char *mode);
 
 /*Socket Helpers*/
 int readAll(int sock_fd, void* buf, int count);
+int sread(int sock_fd, void *buf, int count);
+int swrite(int sock_fd, void *buf, int count);
 
 #endif

@@ -108,7 +108,7 @@ const ProtobufCEnumDescriptor cbmessage__method__descriptor =
   cbmessage__method__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCFieldDescriptor cbmessage__field_descriptors[5] =
+static const ProtobufCFieldDescriptor cbmessage__field_descriptors[6] =
 {
   {
     "type",
@@ -159,8 +159,20 @@ static const ProtobufCFieldDescriptor cbmessage__field_descriptors[5] =
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "status",
+    "size",
     5,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_UINT32,
+    offsetof(CBMessage, has_size),
+    offsetof(CBMessage, size),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "status",
+    6,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_BOOL,
     offsetof(CBMessage, has_status),
@@ -175,13 +187,14 @@ static const unsigned cbmessage__field_indices_by_name[] = {
   3,   /* field[3] = data */
   1,   /* field[1] = method */
   2,   /* field[2] = region */
-  4,   /* field[4] = status */
+  4,   /* field[4] = size */
+  5,   /* field[5] = status */
   0,   /* field[0] = type */
 };
 static const ProtobufCIntRange cbmessage__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 5 }
+  { 0, 6 }
 };
 const ProtobufCMessageDescriptor cbmessage__descriptor =
 {
@@ -191,7 +204,7 @@ const ProtobufCMessageDescriptor cbmessage__descriptor =
   "CBMessage",
   "",
   sizeof(CBMessage),
-  5,
+  6,
   cbmessage__field_descriptors,
   cbmessage__field_indices_by_name,
   1,  cbmessage__number_ranges,

@@ -27,8 +27,8 @@ int main(int argc, char **argv)
     char buffer2[MESSAGE_MAX_SIZE];
     strcpy(buffer, "OLA MUNDO!");
 
-    clipboard_copy(clipboard_id, 0, buffer, strlen(buffer)+1);
-    clipboard_paste(clipboard_id, 0, buffer2, strlen(buffer)+1);
+    clipboard_copy(clipboard_id, 2, buffer, strlen(buffer)+1);
+    //clipboard_paste(clipboard_id, 0, buffer2, strlen(buffer)+1);
     printf("Paste Client: %s \n", buffer2);
     
 

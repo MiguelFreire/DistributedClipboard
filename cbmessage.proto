@@ -14,6 +14,7 @@ message CBMessage {
     required Method method = 2;
     required uint32 region = 3;
     optional bytes data = 4;
-    optional bool status = 5;
+    optional uint32 size = 5;
+    optional bool status = 6;
 
 }
