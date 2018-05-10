@@ -42,6 +42,8 @@ typedef struct packed_message {
     int size;
 } packed_message;
 
+packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status);
+
 packed_message new_response(message_method method, int region, void *data, size_t count, bool status);
 packed_message new_size_message(message_method method, int region, size_t count);
 packed_message new_request(message_method method, int region, void *data, size_t count);

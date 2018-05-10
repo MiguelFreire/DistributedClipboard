@@ -16,6 +16,17 @@
 #include "utils.h"
 
 
+int cbstore(size_t region, void* data, size_t count, void **store) {
+   if(validate_region(region) || data == NULL || count < 0 || store == NULL)
+        return -1;
+
+    if(store[region] != NULL) free(store[region]);
+    store[region] = smalloc(count);
+    memcpy(store[region], data, count);
+
+    return 1;
+}
+
 void usage() {
     printf("Usage: \n");
     printf("\t Single Mode: clipboard \n");
@@ -86,8 +97,12 @@ int main(int argc, char **argv) {
             }
             if(fork() == 0) {
                 logs("Client connected!", L_INFO);
-                //First we read the request message with the information about size,region and method
+                while(1) {
                 bytes = read(client, size_buffer, MESSAGE_MAX_SIZE);
+                if(bytes == 0) {
+                    logs("Client disconnected", L_INFO);
+                    break;
+                }
                 if(bytes == -1) {
                     logs(strerror(errno), L_ERROR);
                 }
@@ -100,11 +115,11 @@ int main(int argc, char **argv) {
                 printf("Region: %d, Method: %d, Size:%d \n", msg->region, msg->method, msg->size);
                 //Alloc data receive buffer
                 data_buffer = smalloc(count);
-                response = new_response(msg->method,
+                response = new_message(Response, msg->method,
                                         msg->region,
                                         NULL,
                                         0,
-                                        true);
+                                        1,1);
                 cbmessage__free_unpacked(msg, NULL);
 
                 bytes = write(client, response.buf, response.size);
@@ -121,10 +136,14 @@ int main(int argc, char **argv) {
                 logs("Received2!", L_INFO);
                 msg = cbmessage__unpack(NULL, count, data_buffer);
                 printf("Received: %s\n", msg->data.data);
-            
+                
+                cbstore(msg->region, msg->data.data, msg->data.len, store);
 
                 cbmessage__free_unpacked(msg, NULL);
                 free(data_buffer);
+                }
+                
+                //First we read the request message with the information about size,region and method
             }
 
         }

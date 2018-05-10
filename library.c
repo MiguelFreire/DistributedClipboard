@@ -18,19 +18,31 @@ bool validate_region(int region) {
     return (region > 0 || region < NUM_REGIONS);
 }
 
-packed_message new_size_message(message_method method, int region, size_t count) {
+packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status)  {
     CBMessage msg = CBMESSAGE__INIT;
 
     size_t packed_size;
     void* buffer;
     packed_message package = {NULL, 0};
 
-    msg.type = CBMESSAGE__TYPE__Request;
-    msg.method = CBMESSAGE__METHOD__Copy;
+    msg.type = type;
+    msg.method = method;
     msg.region = region;
-    msg.has_size = 1;
-    msg.size = count;
+    if(data != NULL) {
+        msg.has_data = 1;
+        msg.data.data = data;
+        msg.data.len = count;
+    }
 
+    if(count != 0) {
+        msg.has_size = 1;
+        msg.size = count;
+    }
+
+    if(has_status) {
+        msg.has_status = 1;
+        msg.status = status;
+    }
     packed_size = cbmessage__get_packed_size(&msg);
    
     buffer = smalloc(packed_size);
@@ -157,9 +169,12 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
     int bytes = 0;
     
-    packed_message request = new_request(Copy, region, buf, count);
 
-    packed_message request_with_size = new_size_message(Copy,region, request.size);
+    
+    packed_message request = new_message(Request, Copy, region, buf, count, 0,0);
+    packed_message request_with_size = new_message(Request, Copy, region, NULL, request.size, 0,0);
+
+    
     printf("Sending %d bytes\n", request_with_size.size);
     //Send Request to server
     bytes = write(clipboard_id, request_with_size.buf, request_with_size.size);
@@ -175,8 +190,9 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
     }
 
     cbmessage__free_unpacked(msg, NULL);
-    //Send data
     
+    
+
 
     return bytes;
 
