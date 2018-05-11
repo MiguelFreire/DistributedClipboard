@@ -1,2 +1,4 @@
 *.o
 todo
+client
+clipboard

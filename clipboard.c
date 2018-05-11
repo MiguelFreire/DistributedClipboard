@@ -16,15 +16,70 @@
 #include "utils.h"
 
 
-int cbstore(size_t region, void* data, size_t count, void **store) {
+typedef struct store_object {
+    void *data;
+    size_t size;
+} store_object;
+
+int cbstore(size_t region, void* data, size_t count, store_object **store) {
    if(validate_region(region) || data == NULL || count < 0 || store == NULL)
         return -1;
 
-    if(store[region] != NULL) free(store[region]);
-    store[region] = smalloc(count);
+    if(store[region]->data != NULL) {
+        free(store[region]->data);
+        store[region]->size = 0;
+    }
+
+    store[region]->data = smalloc(count);
     memcpy(store[region], data, count);
+    store[region]->size = count;
 
     return 1;
+}
+
+int handleCopy(int client, CBMessage *msg, void **store) {
+    size_t count;
+    void *data_buffer;
+    packed_message response;
+    size_t bytes;
+
+    //Save data size to count
+    count = msg->size;
+    //Alloc buffer to save data
+    data_buffer = smalloc(count); 
+    //Tell the client we are ready to receive data
+    response = new_message(Response, msg->method, msg->region,NULL,0,1,1); 
+    //Lets clear the message structure to reuse
+    cbmessage__free_unpacked(msg,NULL); 
+    //Write response to client
+    bytes = write(client, response.buf, response.size);
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+        free(data_buffer);
+        return 0;
+    }
+    //Read all bytes (count) from client
+    bytes = sread(client, data_buffer, count);
+    msg = cbmessage__unpack(NULL, count, data_buffer);
+    //Store new data in the store, store will be shared var
+    cbstore(msg->region, msg->data.data, msg->data.len, store);
+
+    cbmessage__free_unpacked(msg, NULL);
+    free(data_buffer);
+
+    return 1;
+}
+
+int handlePaste(int client, CBMessage *msg, void **store) {
+    size_t count;
+    void *data_buffer;
+    packed_message response;
+    size_t bytes;
+
+    int region = msg->region;
+
+
+
 }
 
 void usage() {
@@ -37,7 +92,7 @@ void usage() {
 
 int main(int argc, char **argv) {
 
-    void * store[NUM_REGIONS]; //create store 
+    store_object *store[NUM_REGIONS] = {NULL, 0}; //create store 
 
     if(argc == 1) {//single mode
         logs("Starting in single mode.", L_INFO);
@@ -75,72 +130,53 @@ int main(int argc, char **argv) {
         logs("Local server started!", L_INFO); 
 
         
-        
-
         CBMessage *msg;
-        packed_message response;
+        
         uint8_t size_buffer[MESSAGE_MAX_SIZE];
-        void *data_buffer = NULL; //byte stream
         int bytes = 0;
-        size_t count = 0;
         int client;
         int addr_size = sizeof(client_addr);
+        int status;
 
 
         while(1) {
             logs("Waiting for clients...", L_INFO);
             int client = accept(socket_fd, (struct sockaddr *) &client_addr, &addr_size);
-            if (client == -1)
-            {
+            
+            if(client == -1) {
                 logs(strerror(errno), L_ERROR);
                 exit(-1);
             }
+            
             if(fork() == 0) {
                 logs("Client connected!", L_INFO);
                 while(1) {
-                bytes = read(client, size_buffer, MESSAGE_MAX_SIZE);
-                if(bytes == 0) {
-                    logs("Client disconnected", L_INFO);
-                    break;
-                }
-                if(bytes == -1) {
-                    logs(strerror(errno), L_ERROR);
-                }
-                printf("Received %d\n", bytes);
-                //Unpacks from proto to c format
-                msg = cbmessage__unpack(NULL, bytes, size_buffer);
-                
-                //Get data size
-                count = msg->size;
-                printf("Region: %d, Method: %d, Size:%d \n", msg->region, msg->method, msg->size);
-                //Alloc data receive buffer
-                data_buffer = smalloc(count);
-                response = new_message(Response, msg->method,
-                                        msg->region,
-                                        NULL,
-                                        0,
-                                        1,1);
-                cbmessage__free_unpacked(msg, NULL);
-
-                bytes = write(client, response.buf, response.size);
-                if (bytes == -1)
-                {
-                    logs(strerror(errno), L_ERROR);
-                }
-                bytes = sread(client, data_buffer, count);
-                if (bytes == -1)
-                {
-                    logs(strerror(errno), L_ERROR);
-                }
-
-                logs("Received2!", L_INFO);
-                msg = cbmessage__unpack(NULL, count, data_buffer);
-                printf("Received: %s\n", msg->data.data);
-                
-                cbstore(msg->region, msg->data.data, msg->data.len, store);
-
-                cbmessage__free_unpacked(msg, NULL);
-                free(data_buffer);
+                    bytes = read(client, size_buffer, MESSAGE_MAX_SIZE);
+                    if(bytes == 0) {
+                        logs("Client disconnected", L_INFO);
+                        break;
+                    }
+                    if(bytes == -1) {
+                        logs(strerror(errno), L_ERROR);
+                    }
+                    printf("Received %d\n", bytes);
+                    //Unpacks from proto to c format
+                    msg = cbmessage__unpack(NULL, bytes, size_buffer);
+                    status = 0;
+                    
+                    switch (msg->method)
+                    {
+                        case Copy:
+                            status = handleCopy(client, msg, store);
+                            status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
+                            break;
+                        case Paste:
+                            status = handlePaste(client, msg, store);
+                            status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handlying paste method", L_ERROR);
+                            break;
+                        default:
+                            break;
+                    }
                 }
                 
                 //First we read the request message with the information about size,region and method

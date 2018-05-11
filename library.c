@@ -191,7 +191,7 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 
     cbmessage__free_unpacked(msg, NULL);
     
-    
+    free(request.buf);
 
 
     return bytes;

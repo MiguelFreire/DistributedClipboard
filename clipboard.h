@@ -15,27 +15,15 @@
 
 #include <sys/types.h>
 #include <stdbool.h>
+#include "cbmessage.pb-c.h"
 
-typedef enum message_type {
-    Request,
-    Response
-} message_type;
+#define Request CBMESSAGE__TYPE__Request
+#define Response CBMESSAGE__TYPE__Response
+#define Copy CBMESSAGE__METHOD__Copy
+#define Paste CBMESSAGE__METHOD__Paste
 
-typedef enum message_method
-{
-    Copy,
-    Paste
-} message_method;
-
-typedef struct clipboard_message {
-    message_type type; //required
-    message_method method; //required
-    int region; //required
-    void *data; //byte stream - optional
-    int size; //optional
-    bool status; //optional 
-    
-} clipboard_message;
+typedef CBMessage__Type message_type;
+typedef CBMessage__Method message_method;
 
 typedef struct packed_message {
     void *buf;
