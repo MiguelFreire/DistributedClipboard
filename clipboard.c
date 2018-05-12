@@ -21,23 +21,23 @@ typedef struct store_object {
     size_t size;
 } store_object;
 
-int cbstore(size_t region, void* data, size_t count, store_object **store) {
-   if(validate_region(region) || data == NULL || count < 0 || store == NULL)
+int cbstore(size_t region, void* data, size_t count, store_object *store) {
+   if(!validate_region(region) || data == NULL || store == NULL)
         return -1;
 
-    if(store[region]->data != NULL) {
-        free(store[region]->data);
-        store[region]->size = 0;
+    if(store[region].data != NULL) {
+        free(store[region].data);
+        store[region].size = 0;
     }
 
-    store[region]->data = smalloc(count);
-    memcpy(store[region], data, count);
-    store[region]->size = count;
+    store[region].data = smalloc(count);
+    memcpy(store[region].data, data, count);
+    store[region].size = count;
 
     return 1;
 }
 
-int handleCopy(int client, CBMessage *msg, void **store) {
+int handleCopy(int client, CBMessage *msg, store_object *store) {
     size_t count;
     void *data_buffer;
     packed_message response;
@@ -70,16 +70,58 @@ int handleCopy(int client, CBMessage *msg, void **store) {
     return 1;
 }
 
-int handlePaste(int client, CBMessage *msg, void **store) {
+int handlePaste(int client, CBMessage *msg, store_object *store) {
     size_t count;
     void *data_buffer;
     packed_message response;
+    packed_message response_with_size;
+    uint8_t response_buffer[MESSAGE_MAX_SIZE];
     size_t bytes;
 
     int region = msg->region;
+    logs("CHECKING", L_INFO);
+    if(store[region].data == NULL) {
+        logs("Region has no data", L_INFO);
+        //there is no data in that region send negative response
+        response = new_message(Response, msg->method, msg->region, NULL, 0, 1,0);
+        
+        cbmessage__free_unpacked(msg, NULL);
+        
+        bytes = write(client, response.buf, response.size);
+        
+        free(response.buf);
+        
+        return 0;
+    }
+    logs("NOT OK", L_INFO);
+    //Create response with data
+    response = new_message(Response, msg->method, region, store[region].data, store[region].size,1,1);
+    //Create response with size
+    response_with_size = new_message(Response, msg->method, region, NULL, response.size, 0,0);
 
+    bytes = write(client, response_with_size.buf, response_with_size.size);
 
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+    }
+    //Get ready response from client
+    bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
+    msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
+    if(msg->has_status && msg->status) {
+        //Client said it's ok! Let's send the data!
+        bytes = write(client, response.buf, response.size);
+        if (bytes == -1) {
+            logs(strerror(errno), L_ERROR);
+            //We should return and error and free stuff! 
+        }
+    }
+
+    cbmessage__free_unpacked(msg, NULL);
+
+    free(response.buf);
+
+    return 1;
 }
 
 void usage() {
@@ -92,7 +134,8 @@ void usage() {
 
 int main(int argc, char **argv) {
 
-    store_object *store[NUM_REGIONS] = {NULL, 0}; //create store 
+    store_object *store;
+    store = scalloc(NUM_REGIONS, sizeof(store_object)); //free it in the end!
 
     if(argc == 1) {//single mode
         logs("Starting in single mode.", L_INFO);
@@ -167,10 +210,12 @@ int main(int argc, char **argv) {
                     switch (msg->method)
                     {
                         case Copy:
+                            logs("Handling copy method...", L_INFO);
                             status = handleCopy(client, msg, store);
                             status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
                             break;
                         case Paste:
+                            logs("Handling paste method...", L_INFO);
                             status = handlePaste(client, msg, store);
                             status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handlying paste method", L_ERROR);
                             break;

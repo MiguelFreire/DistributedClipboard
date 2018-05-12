@@ -201,23 +201,65 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
     if (!validate_region(region) || count <= 0 || buf == NULL) return 0;
 
-    // clipboard_message *request = new_request(Paste, region, buf, count);
-    // clipboard_message response;
+    CBMessage *msg;
+    int bytes = 0;
+    uint8_t response_buffer[MESSAGE_MAX_SIZE];
+    size_t size;
+    void *buffer;
+    packed_message response;
+    packed_message request = new_message(Request, Paste, region, NULL,0,0,0);
 
-     int bytes = 0;
+    bytes = write(clipboard_id, request.buf, request.size);
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+        free(request.buf);
+        return 0;
+    }
 
-    // bytes = write(clipboard_id, &request, sizeof(request));
+    bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
+    msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
-    // if(bytes != sizeof(request)) {
-    //     logs("Could not send request", L_ERROR);
-    // }
-    // bytes= read(clipboard_id, &response, sizeof(response));
-    // if(!response.status) {
-    //     logs("Could not receive all bytes", L_ERROR);
-    //     return 0;
-    // }
-    // logs ("Pasted successfuly!", L_INFO);
+    if(msg->has_status && !msg->status) {
+        cbmessage__free_unpacked(msg, NULL);
+        free(request.buf);
+        return 0;
+    }
 
-    // memcpy(buf, response.data, count);
-    return bytes;
+    size = msg->size;
+    buffer = smalloc(size);
+
+    cbmessage__free_unpacked(msg, NULL); //lets free the msg to reuse later
+
+    response = new_message(Request, Paste, region, NULL, 0, 1,1);
+
+    bytes = write(clipboard_id, response.buf, response.size);
+
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+        free(request.buf);
+        free(response.buf);
+        return 0;
+    }
+
+    bytes = sread(clipboard_id, buffer, size);
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+        free(request.buf);
+        free(response.buf);
+        return 0;
+    }
+
+    msg = cbmessage__unpack(NULL, size, buffer);
+
+    size = msg->data.len;
+    
+    if (size > count) memcpy(buf, msg->data.data, count);
+    else memcpy(buf, msg->data.data, size);
+
+    cbmessage__free_unpacked(msg, NULL);
+
+    free(request.buf);
+    free(response.buf);
+
+    return size;
 }
