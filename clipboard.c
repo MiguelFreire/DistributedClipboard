@@ -10,6 +10,7 @@
 #include <sys/un.h>
 #include <time.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "clipboard.h"
 #include "cbmessage.pb-c.h"
@@ -79,6 +80,7 @@ int handlePaste(int client, CBMessage *msg, store_object *store) {
     size_t bytes;
 
     int region = msg->region;
+    printf("REGION: %d\n", region);
     logs("CHECKING", L_INFO);
     if(store[region].data == NULL) {
         logs("Region has no data", L_INFO);
@@ -90,7 +92,7 @@ int handlePaste(int client, CBMessage *msg, store_object *store) {
         bytes = write(client, response.buf, response.size);
         
         free(response.buf);
-        
+
         return 0;
     }
     logs("NOT OK", L_INFO);
@@ -133,14 +135,107 @@ void usage() {
 }
 
 int main(int argc, char **argv) {
+    
+    /*Program Vars*/
+    int c; //var for opt
+
+    /*Threads*/
+    pthread_t thread_regions[NUM_REGIONS];
+    pthread_t thread_unix_com_handler;
+    pthread_t thread_inet_com_handler;
+
+    /*CLIPBOARD VARIABLES*/
+    bool connected_mode;
+    char *local_ip;
+    int local_port;
+    /*UNIX_COM VARIABLES */
+
+    /*INET_COM VARIABLES*/
+    char *remote_ip; //remote ip
+    int remote_port;  //remote port
+    int socket_fd_inet_local; //socket for inet com
+    int socket_fd_inet_remote;
+    struct sockaddr_in local_addr; //
+    struct sockaddr_in remote_addr; // 
+    
+
+    /*Handle Arguments / Program Options*/
+    while((c=getopt(argc, argv, "c:")) != -1) {
+        switch(c) {
+            case 'c':
+                remote_ip = optarg;
+                remote_port = atoi(argv[optind]); //add arguments checker
+                connected_mode = true;
+                break;
+            default:
+                logs("No arguments given, launching just in single mode...", L_INFO);
+                break;
+        }   
+    }
+
+
+    /*new_unix_connection*/
+    /*new_inet_connection*/
+    srand(time(NULL)); //Use time as seeder for now, maybe change for getpid? 
+    local_port = rand()%(64738-1024) + 1024;
+
+    socket_fd_inet_local = socket(AF_INET, SOCK_STREAM, 0);
+    if(socket_fd_inet_local == -1) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    } 
+
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_port = htons(local_port);
+    local_addr.sin_addr.s_addr = INADDR_ANY;
+
+    if(bind(socket_fd_inet_local, (struct sockaddr *) &local_addr, sizeof(struct sockaddr_in)) == -1) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    }  
+
+    if(listen(socket_fd_inet_local,2) == -1) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    }
+
+    
+    //Handle Connected Mode
+
+    if(connected_mode) {
+        socket_fd_inet_remote = socket(AF_INET,SOCK_STREAM,0);
+        if(socket_fd_inet_remote == -1) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
+
+        remote_addr.sin_family = AF_INET;
+        remote_addr.sin_port = htons(remote_port);
+        
+        if(inet_aton(remote_ip, &remote_addr.sin_addr) == 0) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
+
+        if(connect(socket_fd_inet_remote, (const struct sockaddr*) &remote_addr, sizeof(struct sockaddr_in)) == -1) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
+
+    }
+
+
+    //DONE
 
     store_object *store;
     store = scalloc(NUM_REGIONS, sizeof(store_object)); //free it in the end!
+        
+
 
     if(argc == 1) {//single mode
         logs("Starting in single mode.", L_INFO);
         logs("Creating local clipboard", L_INFO);
-
+        //UNIX SOCKET CONNECTION
         //Create address for local clipboard
         struct sockaddr_un clipboard_addr;
         struct sockaddr_un client_addr;
@@ -150,26 +245,26 @@ int main(int argc, char **argv) {
         
         //Create socket for local clipboard communication (UNIX DATASTREAM)
         unlink(CLIPBOARD_SOCKET);
-        int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        int socket_fd_unix = socket(AF_UNIX, SOCK_STREAM, 0);
 
-        if(socket_fd == -1) {
+        if(socket_fd_unix == -1) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         } 
 
         //Bind socket to address
 
-        if(bind(socket_fd, (struct sockaddr *) &clipboard_addr, sizeof(clipboard_addr)) == -1) {
+        if(bind(socket_fd_unix, (struct sockaddr *) &clipboard_addr, sizeof(clipboard_addr)) == -1) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
 
-        if(listen(socket_fd,1) == -1) {
+        if(listen(socket_fd_unix,1) == -1) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
 
-
+        //END UNIX SOCKET CONNECTION
         logs("Local server started!", L_INFO); 
 
         
@@ -178,13 +273,13 @@ int main(int argc, char **argv) {
         uint8_t size_buffer[MESSAGE_MAX_SIZE];
         int bytes = 0;
         int client;
-        int addr_size = sizeof(client_addr);
+        unsigned int addr_size = sizeof(client_addr);
         int status;
 
 
         while(1) {
             logs("Waiting for clients...", L_INFO);
-            int client = accept(socket_fd, (struct sockaddr *) &client_addr, &addr_size);
+            int client = accept(socket_fd_unix, (struct sockaddr *) &client_addr, &addr_size);
             
             if(client == -1) {
                 logs(strerror(errno), L_ERROR);
@@ -230,20 +325,25 @@ int main(int argc, char **argv) {
         }
         
         unlink(CLIPBOARD_SOCKET);
-        close(socket_fd);
+        close(socket_fd_unix);
         
         exit(0);
     } if(argc > 3 && argv[1][0] == '-' && argv[1][1] == 'c') {
-        struct in_addr server_addr;
-
+        struct sockaddr_in server_addr;
+        int socket_fd;
+        int port;
+        //Check for valid IP
         if(inet_aton(argv[2], &server_addr) == 0) {
             logs("Invalid IP Address", L_ERROR);
             usage();
             exit(-1);
         }
 
-        int port = atoi(argv[3]);
 
+        socket_fd = socket(AF_INET, SOCK_STREAM,0);
+        
+        server_addr.sin_family = AF_INET;
+	    server_addr.sin_port= htons(port);
 
     }
         

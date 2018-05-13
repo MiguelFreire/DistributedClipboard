@@ -4,7 +4,7 @@ CFLAGS = -Wall -g
 all: clipboard client
 
 clipboard: clipboard.o utils.o library.o cbmessage.pb-c.o 
-			$(CC) $(CFLAGS) -o clipboard clipboard.o utils.o cbmessage.pb-c.o library.o -lprotobuf-c
+			$(CC) $(CFLAGS) -o clipboard clipboard.o utils.o cbmessage.pb-c.o library.o -lprotobuf-c -lpthread
 client: client.o utils.o library.o cbmessage.pb-c.o 
 			$(CC) $(CFLAGS) -o client client.o utils.o library.o cbmessage.pb-c.o -lprotobuf-c
 clipboard.o: clipboard.c clipboard.h utils.h cbmessage.pb-c.h
