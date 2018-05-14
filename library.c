@@ -115,14 +115,14 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
     cbmessage__free_unpacked(msg, NULL);
     
     free(request.buf);
-
+    free(request_with_size.buf);
 
     return bytes;
 
 }
 
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
-    if (!validate_region(region) || count <= 0 || buf == NULL) return 0;
+    if (!validate_region(region) || count == 0 || buf == NULL) return 0;
 
     CBMessage *msg;
     int bytes = 0;
@@ -183,6 +183,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 
     free(request.buf);
     free(response.buf);
+    free(buffer);
 
     return size;
 

@@ -16,6 +16,95 @@
 #include "cbmessage.pb-c.h"
 #include "utils.h"
 
+/*REMOTE Clipbaord Linked Lists*/
+
+typedef struct remote_clipboard {
+    size_t id;
+    pthread_t thread_id;
+    size_t socket_fd;
+    struct remote_clipboard *next;
+} remote_clipboard;
+
+typedef struct connected_list {
+    remote_clipboard *cb;
+    size_t size;
+} connected_list;
+
+connected_list *new_list() {
+    connected_list *list;
+    list = scalloc(1,sizeof(connected_list)); //Init all values to default
+
+    return list;
+}
+
+remote_clipboard *new_clipboard(size_t socket_fd) {
+    //TODO: validate arguments
+    remote_clipboard *cb;
+
+    cb = scalloc(1,sizeof(remote_clipboard));
+    cb->socket_fd = socket_fd;
+    return cb;
+}
+
+void add_clipboard(connected_list *list, remote_clipboard *cb) {
+    remote_clipboard *aux;
+
+    if(list->cb == NULL) { //If no head exists add it to the head
+       list->cb = cb;
+       list->size++;
+       cb->id = list->size;
+       return;
+   }
+
+   aux = list->cb;
+   while(aux->next != NULL) aux = aux->next; //go to the end of the list
+   
+    aux->next = cb;
+    list->size++;
+}
+
+void remove_clipboard_by_thread_id(connected_list *list, pthread_t thread_id) {
+    remote_clipboard *aux;
+    remote_clipboard *cur;
+    bool found = false;
+    if(list->cb == NULL) return;
+    cur = list->cb;
+    //Current After
+    //Next To be removed
+    //Next next 
+
+    while(cur->next != NULL) {
+        if(cur->next->thread_id == thread_id) {
+            found = true;
+            break;
+        }
+        cur = cur->next;
+    }
+    if(found) {
+        aux = cur->next; //to be removed
+        cur->next = aux->next;
+
+        free(aux);
+        list->size--;
+     }
+   
+}
+
+void free_list(connected_list *list) {
+    remote_clipboard *aux, *cur;
+
+    cur = list->cb;
+
+    while(cur != NULL) {
+        aux = cur;
+        cur = aux->next;
+        free(aux);
+    }
+
+    free(list);
+}
+
+    /*END REMOTE Clipboard Linked List */
 
 typedef struct store_object {
     void *data;
@@ -45,8 +134,11 @@ struct sockaddr_in remote_addr; //
 struct sockaddr_un clipboard_addr;
 struct sockaddr_un client_addr;
 
+connected_list *cblist;
+pthread_rwlock_t rwlocks[NUM_REGIONS];
 
-packed_message new_sync_message()  {
+packed_message new_sync_message()
+{
     CBMessage msg = CBMESSAGE__INIT;
 
     size_t packed_size;
@@ -228,7 +320,11 @@ int handleCopy(int client, CBMessage *msg) {
     bytes = sread(client, data_buffer, count);
     msg = cbmessage__unpack(NULL, count, data_buffer);
     //Store new data in the store, store will be shared var
+    pthread_rwlock_wrlock(&rwlocks[msg->region]);
     cbstore(msg->region, msg->data->data, msg->data->len);
+    pthread_rwlock_unlock(&rwlocks[msg->region]);
+
+
 
     cbmessage__free_unpacked(msg, NULL);
     free(data_buffer);
@@ -247,6 +343,9 @@ int handlePaste(int client, CBMessage *msg) {
     int region = msg->region;
     printf("REGION: %d\n", region);
     logs("CHECKING", L_INFO);
+
+    /*Read LOCK!*/
+    pthread_rwlock_rdlock(&rwlocks[region]);
     if(store[region].data == NULL) {
         logs("Region has no data", L_INFO);
         //there is no data in that region send negative response
@@ -263,6 +362,8 @@ int handlePaste(int client, CBMessage *msg) {
     logs("NOT OK", L_INFO);
     //Create response with data
     response = new_message(Response, msg->method, region, store[region].data, store[region].size,1,1);
+    /*Read UNLOCK!*/
+    pthread_rwlock_unlock(&rwlocks[region]);
     //Create response with size
     response_with_size = new_message(Response, msg->method, region, NULL, response.size, 0,0);
 
@@ -314,7 +415,8 @@ void *thread_unix_client(void *arg)  {
         bzero(size_buffer, MESSAGE_MAX_SIZE);
         bytes = read(*client, size_buffer, MESSAGE_MAX_SIZE);
         if(bytes == 0) {
-            logs("Client terminated connection", L_INFO);
+            remove_clipboard_by_thread_id(cblist, pthread_self());
+            logs("Client removed from client list", L_INFO);
             break;
         }
         if(bytes == -1) {
@@ -356,18 +458,23 @@ void *thread_unix_client(void *arg)  {
 void *thread_inet_handler(void * arg) {
         unsigned int addr_size = sizeof(client_addr);
         int client;        
-        pthread_t id;
+        remote_clipboard *rcb;
 
         while(1) {
             logs("Waiting for remote clients...", L_INFO);
+            rcb = NULL;
             client = accept(socket_fd_inet_local, (struct sockaddr *) &client_addr, &addr_size);
-            
+            printf("Print 1\n");
+            rcb = new_clipboard(client);
+            printf("Print 2\n");
+            add_clipboard(cblist, rcb);
+            printf("Print 3\n");
             if(client == -1) {
                 logs(strerror(errno), L_ERROR);
                 exit(-1);
             }
 
-            pthread_create(&id, NULL, thread_unix_client, &client);
+            pthread_create(&rcb->thread_id, NULL, thread_unix_client, &client);
 
         }
 
@@ -452,8 +559,14 @@ int main(int argc, char **argv) {
     
     /*Program Vars*/
     int c; //var for opt
-
-    store = scalloc(NUM_REGIONS, sizeof(store_object));
+    logs("Creating store...", L_INFO);
+    //TODO: create new store function
+    store = scalloc(NUM_REGIONS, sizeof(store_object)); 
+    cblist = new_list();
+    logs("Creating read-write locks...", L_INFO);
+    for(int j = 0; j < NUM_REGIONS; j++) {
+        pthread_rwlock_init(&rwlocks[j], NULL);
+    }
 
     /*Handle Arguments / Program Options*/
     while((c=getopt(argc, argv, "c:")) != -1) {
@@ -513,7 +626,7 @@ int main(int argc, char **argv) {
         pthread_create(&id, NULL, thread_unix_client, &client);
 
     }
-        
+    //TODO: free store and free cblist
     unlink(CLIPBOARD_SOCKET);
     close(socket_fd_unix);
     

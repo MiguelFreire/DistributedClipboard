@@ -23,6 +23,5 @@ clean:
 			rm clipboard
 			rm client
 			rm CLIPBOARD_SOCKET
-			rm APP_SOCKET_*
 proto:
 			protoc --c_out=. cbmessage.proto	
