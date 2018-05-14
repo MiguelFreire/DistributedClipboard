@@ -80,18 +80,20 @@ const ProtobufCEnumDescriptor cbmessage__type__descriptor =
   cbmessage__type__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCEnumValue cbmessage__method__enum_values_by_number[2] =
+static const ProtobufCEnumValue cbmessage__method__enum_values_by_number[3] =
 {
   { "Copy", "CBMESSAGE__METHOD__Copy", 0 },
   { "Paste", "CBMESSAGE__METHOD__Paste", 1 },
+  { "Sync", "CBMESSAGE__METHOD__Sync", 2 },
 };
 static const ProtobufCIntRange cbmessage__method__value_ranges[] = {
-{0, 0},{0, 2}
+{0, 0},{0, 3}
 };
-static const ProtobufCEnumValueIndex cbmessage__method__enum_values_by_name[2] =
+static const ProtobufCEnumValueIndex cbmessage__method__enum_values_by_name[3] =
 {
   { "Copy", 0 },
   { "Paste", 1 },
+  { "Sync", 2 },
 };
 const ProtobufCEnumDescriptor cbmessage__method__descriptor =
 {
@@ -100,9 +102,9 @@ const ProtobufCEnumDescriptor cbmessage__method__descriptor =
   "Method",
   "CBMessage__Method",
   "",
-  2,
+  3,
   cbmessage__method__enum_values_by_number,
-  2,
+  3,
   cbmessage__method__enum_values_by_name,
   1,
   cbmessage__method__value_ranges,
@@ -149,9 +151,9 @@ static const ProtobufCFieldDescriptor cbmessage__field_descriptors[6] =
   {
     "data",
     4,
-    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_LABEL_REPEATED,
     PROTOBUF_C_TYPE_BYTES,
-    offsetof(CBMessage, has_data),
+    offsetof(CBMessage, n_data),
     offsetof(CBMessage, data),
     NULL,
     NULL,

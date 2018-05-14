@@ -29,10 +29,11 @@ int main(int argc, char **argv)
 
     strcpy(buffer, "OLA MUNDO!");
 
-    clipboard_paste(clipboard_id, 3, buffer2, strlen("ADEUS"));
+    clipboard_copy(clipboard_id, 3, buffer, strlen(buffer)+1);
     printf("Paste Client: %s \n", buffer2);
     getchar();
-    clipboard_paste(clipboard_id, 3, buffer2, strlen("ADEUS"));
+    clipboard_paste(clipboard_id, 3, buffer2, strlen(buffer));
+    buffer2[strlen(buffer)+1] = '\0';
     printf("Paste Client: %s \n", buffer2);
     
 

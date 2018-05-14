@@ -27,7 +27,8 @@ typedef enum _CBMessage__Type {
 } CBMessage__Type;
 typedef enum _CBMessage__Method {
   CBMESSAGE__METHOD__Copy = 0,
-  CBMESSAGE__METHOD__Paste = 1
+  CBMESSAGE__METHOD__Paste = 1,
+  CBMESSAGE__METHOD__Sync = 2
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CBMESSAGE__METHOD)
 } CBMessage__Method;
 
@@ -39,8 +40,8 @@ struct  _CBMessage
   CBMessage__Type type;
   CBMessage__Method method;
   uint32_t region;
-  protobuf_c_boolean has_data;
-  ProtobufCBinaryData data;
+  size_t n_data;
+  ProtobufCBinaryData *data;
   protobuf_c_boolean has_size;
   uint32_t size;
   protobuf_c_boolean has_status;
@@ -48,7 +49,7 @@ struct  _CBMessage
 };
 #define CBMESSAGE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&cbmessage__descriptor) \
-    , CBMESSAGE__TYPE__Request, CBMESSAGE__METHOD__Copy, 0, 0, {0,NULL}, 0, 0, 0, 0 }
+    , CBMESSAGE__TYPE__Request, CBMESSAGE__METHOD__Copy, 0, 0,NULL, 0, 0, 0, 0 }
 
 
 /* CBMessage methods */

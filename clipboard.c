@@ -22,7 +22,64 @@ typedef struct store_object {
     size_t size;
 } store_object;
 
-int cbstore(size_t region, void* data, size_t count, store_object *store) {
+/*Threads*/
+pthread_t thread_regions[NUM_REGIONS];
+pthread_t thread_unix_com_handler;
+pthread_t thread_inet_com_handler;
+
+/*CLIPBOARD VARIABLES*/
+bool connected_mode;
+char *local_ip;
+int local_port;
+store_object *store;
+/*UNIX_COM VARIABLES */
+
+/*INET_COM VARIABLES*/
+char *remote_ip; //remote ip
+int remote_port;  //remote port
+int socket_fd_inet_local; //socket for inet com
+int socket_fd_inet_remote;
+int socket_fd_unix;
+struct sockaddr_in local_addr; //
+struct sockaddr_in remote_addr; // 
+struct sockaddr_un clipboard_addr;
+struct sockaddr_un client_addr;
+
+
+packed_message new_sync_message()  {
+    CBMessage msg = CBMESSAGE__INIT;
+
+    size_t packed_size;
+    void* buffer;
+    packed_message package = {NULL, 0};
+
+    msg.type = Request;
+    msg.method = Sync;
+
+    msg.data = scalloc(NUM_REGIONS, sizeof(ProtobufCBinaryData));
+                                            
+    for(int i = 0; i < NUM_REGIONS; i++) {
+        msg.n_data++;
+        if(store[i].size > 0) {
+            msg.data[i].data = store[i].data;
+            msg.data[i].len = store[i].size;
+        }
+    }
+
+    packed_size = cbmessage__get_packed_size(&msg);
+   
+    buffer = smalloc(packed_size);
+    cbmessage__pack(&msg, buffer);
+
+    package.buf = buffer;
+    package.size = packed_size;
+    
+    free(msg.data);
+
+    return package;
+}
+
+int cbstore(size_t region, void* data, size_t count) {
    if(!validate_region(region) || data == NULL || store == NULL)
         return -1;
 
@@ -37,8 +94,116 @@ int cbstore(size_t region, void* data, size_t count, store_object *store) {
 
     return 1;
 }
+int clipboard_sync(int clipboard_id) {
+    CBMessage *msg;
+    int bytes = 0;
+    uint8_t response_buffer[MESSAGE_MAX_SIZE];
+    size_t size;
+    void *buffer;
+    packed_message response;
+    packed_message request = new_message(Request, Sync, 0, NULL,0,0,0);
+    store_object *aux;
 
-int handleCopy(int client, CBMessage *msg, store_object *store) {
+    bytes = write(clipboard_id, request.buf, request.size);
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+        free(request.buf);
+        return 0;
+    }
+
+    bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
+    msg = cbmessage__unpack(NULL, bytes, response_buffer);
+
+    if(msg->has_status && !msg->status) {
+        cbmessage__free_unpacked(msg, NULL);
+        free(request.buf);
+        return 0;
+    }
+
+    size = msg->size;
+    buffer = smalloc(size);
+
+    cbmessage__free_unpacked(msg, NULL); //lets free the msg to reuse later
+
+    response = new_message(Request, Sync, 0, NULL, 0, 1,1);
+
+    bytes = write(clipboard_id, response.buf, response.size);
+
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+        free(request.buf);
+        free(response.buf);
+        return 0;
+    }
+
+    bytes = sread(clipboard_id, buffer, size);
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+        free(request.buf);
+        free(response.buf);
+        return 0;
+    }
+
+    msg = cbmessage__unpack(NULL, size, buffer);
+
+    printf("%d %s\n", msg->data[3].len, msg->data[3].data);
+
+    for(int i = 0; i < NUM_REGIONS; i++) {
+        if(msg->data[i].len > 0) {
+            store[i].data = smalloc(msg->data[i].len);
+            memcpy(store[i].data, msg->data[i].data, msg->data[i].len);
+            store[i].size = msg->data[i].len;
+        }
+    }
+
+    cbmessage__free_unpacked(msg, NULL);
+
+    free(request.buf);
+    free(response.buf);
+
+    return size;
+}
+
+int handleSync(int client, CBMessage *msg) {
+    size_t count;
+    void *data_buffer;
+    packed_message response;
+    packed_message response_with_size;
+    uint8_t response_buffer[MESSAGE_MAX_SIZE];
+    size_t bytes;
+    
+
+    //Create response with data
+    response = new_sync_message();
+    //Create response with size
+    response_with_size = new_message(Response, msg->method, 0, NULL, response.size, 0,0);
+
+    bytes = write(client, response_with_size.buf, response_with_size.size);
+
+    if(bytes == -1) {
+        logs(strerror(errno), L_ERROR);
+    }
+    //Get ready response from client
+    bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
+    msg = cbmessage__unpack(NULL, bytes, response_buffer);
+
+    if(msg->has_status && msg->status) {
+        //Client said it's ok! Let's send the data!
+        bytes = write(client, response.buf, response.size);
+        if (bytes == -1) {
+            logs(strerror(errno), L_ERROR);
+            //We should return and error and free stuff! 
+        }
+    }
+
+    cbmessage__free_unpacked(msg, NULL);
+
+    free(response.buf);
+
+    return 1;
+}
+
+int handleCopy(int client, CBMessage *msg) {
     size_t count;
     void *data_buffer;
     packed_message response;
@@ -63,7 +228,7 @@ int handleCopy(int client, CBMessage *msg, store_object *store) {
     bytes = sread(client, data_buffer, count);
     msg = cbmessage__unpack(NULL, count, data_buffer);
     //Store new data in the store, store will be shared var
-    cbstore(msg->region, msg->data.data, msg->data.len, store);
+    cbstore(msg->region, msg->data->data, msg->data->len);
 
     cbmessage__free_unpacked(msg, NULL);
     free(data_buffer);
@@ -71,7 +236,7 @@ int handleCopy(int client, CBMessage *msg, store_object *store) {
     return 1;
 }
 
-int handlePaste(int client, CBMessage *msg, store_object *store) {
+int handlePaste(int client, CBMessage *msg) {
     size_t count;
     void *data_buffer;
     packed_message response;
@@ -134,50 +299,110 @@ void usage() {
     printf("\t \t port: integer \n");
 }
 
-int main(int argc, char **argv) {
-    
-    /*Program Vars*/
-    int c; //var for opt
 
-    /*Threads*/
-    pthread_t thread_regions[NUM_REGIONS];
-    pthread_t thread_unix_com_handler;
-    pthread_t thread_inet_com_handler;
+void *thread_unix_client(void *arg)  {
+    int *client = (int*) arg;
 
-    /*CLIPBOARD VARIABLES*/
-    bool connected_mode;
-    char *local_ip;
-    int local_port;
-    /*UNIX_COM VARIABLES */
+    CBMessage *msg;
+        
+    uint8_t size_buffer[MESSAGE_MAX_SIZE];
+    int bytes = 0;
+    int status;   
 
-    /*INET_COM VARIABLES*/
-    char *remote_ip; //remote ip
-    int remote_port;  //remote port
-    int socket_fd_inet_local; //socket for inet com
-    int socket_fd_inet_remote;
-    struct sockaddr_in local_addr; //
-    struct sockaddr_in remote_addr; // 
-    
-
-    /*Handle Arguments / Program Options*/
-    while((c=getopt(argc, argv, "c:")) != -1) {
-        switch(c) {
-            case 'c':
-                remote_ip = optarg;
-                remote_port = atoi(argv[optind]); //add arguments checker
-                connected_mode = true;
+    logs("Client connected!", L_INFO);
+    while(1) {
+        bzero(size_buffer, MESSAGE_MAX_SIZE);
+        bytes = read(*client, size_buffer, MESSAGE_MAX_SIZE);
+        if(bytes == 0) {
+            logs("Client terminated connection", L_INFO);
+            break;
+        }
+        if(bytes == -1) {
+            logs(strerror(errno), L_ERROR);
+        }
+        printf("Received %d\n", bytes);
+        //Unpacks from proto to c format
+        msg = cbmessage__unpack(NULL, bytes, size_buffer);
+        status = 0;
+        
+        switch (msg->method)
+        {
+            case Copy:
+                logs("Handling copy method...", L_INFO);
+                status = handleCopy(*client, msg);
+                status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
+                break;
+            case Paste:
+                logs("Handling paste method...", L_INFO);
+                status = handlePaste(*client, msg);
+                status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handlying paste method", L_ERROR);
+                break;
+            case Sync:
+                logs("Handling sync method...", L_INFO);
+                status = handleSync(*client, msg);
+                status ? logs("Sync method handled successfuly", L_INFO) : logs("Error handlying sync method", L_ERROR);
                 break;
             default:
-                logs("No arguments given, launching just in single mode...", L_INFO);
                 break;
-        }   
+        }
+
+    }
+    logs("Client disconnected!", L_INFO);
+    logs("Thread terminating!", L_INFO);
+
+    return 0;
+}
+
+void *thread_inet_handler(void * arg) {
+        unsigned int addr_size = sizeof(client_addr);
+        int client;        
+        pthread_t id;
+
+        while(1) {
+            logs("Waiting for remote clients...", L_INFO);
+            client = accept(socket_fd_inet_local, (struct sockaddr *) &client_addr, &addr_size);
+            
+            if(client == -1) {
+                logs(strerror(errno), L_ERROR);
+                exit(-1);
+            }
+
+            pthread_create(&id, NULL, thread_unix_client, &client);
+
+        }
+
+    return 0;
+}
+
+void configure_unix_com() {
+    clipboard_addr.sun_family = AF_UNIX; 
+    strcpy(clipboard_addr.sun_path, CLIPBOARD_SOCKET);
+    
+    //Create socket for local clipboard communication (UNIX DATASTREAM)
+    unlink(CLIPBOARD_SOCKET);
+    socket_fd_unix = socket(AF_UNIX, SOCK_STREAM, 0);
+
+    if(socket_fd_unix == -1) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    } 
+
+    //Bind socket to address
+
+    if(bind(socket_fd_unix, (struct sockaddr *) &clipboard_addr, sizeof(clipboard_addr)) == -1) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
     }
 
+    if(listen(socket_fd_unix,1) == -1) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    }
+}
 
-    /*new_unix_connection*/
-    /*new_inet_connection*/
+void configure_inet_local_com() {
     srand(time(NULL)); //Use time as seeder for now, maybe change for getpid? 
-    local_port = rand()%(64738-1024) + 1024;
+    int local_port = rand()%(64738-1024) + 1024;
 
     socket_fd_inet_local = socket(AF_INET, SOCK_STREAM, 0);
     if(socket_fd_inet_local == -1) {
@@ -199,11 +424,11 @@ int main(int argc, char **argv) {
         exit(-1);
     }
 
-    
-    //Handle Connected Mode
+    printf("Port:%d\n", local_port);
+}
 
-    if(connected_mode) {
-        socket_fd_inet_remote = socket(AF_INET,SOCK_STREAM,0);
+void configure_inet_remote_com() {
+    socket_fd_inet_remote = socket(AF_INET,SOCK_STREAM,0);
         if(socket_fd_inet_remote == -1) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
@@ -221,131 +446,78 @@ int main(int argc, char **argv) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
+}
+
+int main(int argc, char **argv) {
+    
+    /*Program Vars*/
+    int c; //var for opt
+
+    store = scalloc(NUM_REGIONS, sizeof(store_object));
+
+    /*Handle Arguments / Program Options*/
+    while((c=getopt(argc, argv, "c:")) != -1) {
+        switch(c) {
+            case 'c':
+                remote_ip = optarg;
+                remote_port = atoi(argv[optind]); //add arguments checker
+                connected_mode = true;
+                break;
+            default:
+                logs("No arguments given, launching just in single mode...", L_INFO);
+                break;
+        }   
+    }
+    /*Configure UNIX Socket Connection */
+    configure_unix_com();
+    /*Configure INET Socket Connection */
+    configure_inet_local_com();
+
+    if(connected_mode) {
+        /*Connect to remote clipboard*/
+        configure_inet_remote_com();
+        printf("MORREU CRL\n");
+        clipboard_sync(socket_fd_inet_remote);
+        
+        printf("Copy do crl oh maninho: %s\n", store[3].data);
+    }
+     //free it in the end!
+        
+
+//single mode
+    logs("Starting in single mode.", L_INFO);
+    logs("Creating local clipboard", L_INFO);
+    //UNIX SOCKET CONNECTION
+    //Create address for local clipboard
+    
+
+    //END UNIX SOCKET CONNECTION
+    logs("Local server started!", L_INFO); 
+
+    
+    unsigned int addr_size = sizeof(client_addr);
+    int client;        
+    pthread_t id;
+
+    pthread_create(&thread_inet_com_handler, NULL, thread_inet_handler, NULL);
+
+    while(1) {
+        logs("Waiting for local clients...", L_INFO);
+        client = accept(socket_fd_unix, (struct sockaddr *) &client_addr, &addr_size);
+        
+        if(client == -1) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
+
+        pthread_create(&id, NULL, thread_unix_client, &client);
 
     }
-
-
-    //DONE
-
-    store_object *store;
-    store = scalloc(NUM_REGIONS, sizeof(store_object)); //free it in the end!
         
-
-
-    if(argc == 1) {//single mode
-        logs("Starting in single mode.", L_INFO);
-        logs("Creating local clipboard", L_INFO);
-        //UNIX SOCKET CONNECTION
-        //Create address for local clipboard
-        struct sockaddr_un clipboard_addr;
-        struct sockaddr_un client_addr;
-
-        clipboard_addr.sun_family = AF_UNIX; 
-        strcpy(clipboard_addr.sun_path, CLIPBOARD_SOCKET);
-        
-        //Create socket for local clipboard communication (UNIX DATASTREAM)
-        unlink(CLIPBOARD_SOCKET);
-        int socket_fd_unix = socket(AF_UNIX, SOCK_STREAM, 0);
-
-        if(socket_fd_unix == -1) {
-            logs(strerror(errno), L_ERROR);
-            exit(-1);
-        } 
-
-        //Bind socket to address
-
-        if(bind(socket_fd_unix, (struct sockaddr *) &clipboard_addr, sizeof(clipboard_addr)) == -1) {
-            logs(strerror(errno), L_ERROR);
-            exit(-1);
-        }
-
-        if(listen(socket_fd_unix,1) == -1) {
-            logs(strerror(errno), L_ERROR);
-            exit(-1);
-        }
-
-        //END UNIX SOCKET CONNECTION
-        logs("Local server started!", L_INFO); 
-
-        
-        CBMessage *msg;
-        
-        uint8_t size_buffer[MESSAGE_MAX_SIZE];
-        int bytes = 0;
-        int client;
-        unsigned int addr_size = sizeof(client_addr);
-        int status;
-
-
-        while(1) {
-            logs("Waiting for clients...", L_INFO);
-            int client = accept(socket_fd_unix, (struct sockaddr *) &client_addr, &addr_size);
-            
-            if(client == -1) {
-                logs(strerror(errno), L_ERROR);
-                exit(-1);
-            }
-            
-            if(fork() == 0) {
-                logs("Client connected!", L_INFO);
-                while(1) {
-                    bytes = read(client, size_buffer, MESSAGE_MAX_SIZE);
-                    if(bytes == 0) {
-                        logs("Client disconnected", L_INFO);
-                        break;
-                    }
-                    if(bytes == -1) {
-                        logs(strerror(errno), L_ERROR);
-                    }
-                    printf("Received %d\n", bytes);
-                    //Unpacks from proto to c format
-                    msg = cbmessage__unpack(NULL, bytes, size_buffer);
-                    status = 0;
-                    
-                    switch (msg->method)
-                    {
-                        case Copy:
-                            logs("Handling copy method...", L_INFO);
-                            status = handleCopy(client, msg, store);
-                            status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
-                            break;
-                        case Paste:
-                            logs("Handling paste method...", L_INFO);
-                            status = handlePaste(client, msg, store);
-                            status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handlying paste method", L_ERROR);
-                            break;
-                        default:
-                            break;
-                    }
-                }
-                
-                //First we read the request message with the information about size,region and method
-            }
-
-        }
-        
-        unlink(CLIPBOARD_SOCKET);
-        close(socket_fd_unix);
-        
-        exit(0);
-    } if(argc > 3 && argv[1][0] == '-' && argv[1][1] == 'c') {
-        struct sockaddr_in server_addr;
-        int socket_fd;
-        int port;
-        //Check for valid IP
-        if(inet_aton(argv[2], &server_addr) == 0) {
-            logs("Invalid IP Address", L_ERROR);
-            usage();
-            exit(-1);
-        }
-
-
-        socket_fd = socket(AF_INET, SOCK_STREAM,0);
-        
-        server_addr.sin_family = AF_INET;
-	    server_addr.sin_port= htons(port);
-
-    }
+    unlink(CLIPBOARD_SOCKET);
+    close(socket_fd_unix);
+    
+    
         
     return 0;
 }

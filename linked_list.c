@@ -15,21 +15,35 @@ linked_list_node *new_item(void *data) {
     item = smalloc(sizeof(linked_list_node));
     item->data = data;
     item->next = NULL;
-
+    
     return item;   
 }
 
 linked_list_node *add_node(linked_list *list, linked_list_node *node) {
-    if(head == NULL) return NULL;
+    if(list->head == NULL) {
+        list->head = node;
+        return list->head;
+    }
+    linked_list_node *aux;
+    aux = head;
+    while(aux->next != NULL) aux = aux->next;
 
-    
+    //Find last node
+    aux->next = node;
 
-    
+    list->size++;
+
+    return node;    
 }
 
+void free_linked_list(linked_list *list) {
+    linked_list_node *aux, *cur;
+    cur = list->head;
+    while(cur != NULL) {
+        aux = cur;
+        cur = aux->next;
 
-linked_list_node *add_item_at_head(linked_list *head, linked_list_node *node) {
-    
+        free(aux->data);
+
+    }
 }
-linked_list_node *add_item_at_end(linked_list *head, void *data);
-void free_linked_list(linked_list *head, void (* freeNode)(void*data));

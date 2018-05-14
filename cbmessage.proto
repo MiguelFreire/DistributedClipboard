@@ -8,12 +8,13 @@ message CBMessage {
     enum Method {
         Copy = 0;
         Paste = 1;
+        Sync = 2;
     }
 
     required Type type = 1;
     required Method method = 2;
     required uint32 region = 3;
-    optional bytes data = 4;
+    repeated bytes data = 4;
     optional uint32 size = 5;
     optional bool status = 6;
 

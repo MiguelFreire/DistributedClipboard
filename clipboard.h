@@ -21,6 +21,7 @@
 #define Response CBMESSAGE__TYPE__Response
 #define Copy CBMESSAGE__METHOD__Copy
 #define Paste CBMESSAGE__METHOD__Paste
+#define Sync CBMESSAGE__METHOD__Sync
 
 typedef CBMessage__Type message_type;
 typedef CBMessage__Method message_method;
@@ -32,9 +33,7 @@ typedef struct packed_message {
 
 packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status);
 
-packed_message new_response(message_method method, int region, void *data, size_t count, bool status);
-packed_message new_size_message(message_method method, int region, size_t count);
-packed_message new_request(message_method method, int region, void *data, size_t count);
+
 
 int clipboard_connect(char *clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);

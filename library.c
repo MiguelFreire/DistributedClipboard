@@ -29,9 +29,10 @@ packed_message new_message(message_type type, message_method method, int region,
     msg.method = method;
     msg.region = region;
     if(data != NULL) {
-        msg.has_data = 1;
-        msg.data.data = data;
-        msg.data.len = count;
+        msg.n_data = 1;
+        msg.data = smalloc(sizeof(ProtobufCBinaryData));
+        msg.data->data = data;
+        msg.data->len = count;
     }
 
     if(count != 0) {
@@ -50,87 +51,9 @@ packed_message new_message(message_type type, message_method method, int region,
 
     package.buf = buffer;
     package.size = packed_size;
-    
-    return package;
-}
-
-packed_message new_response(message_method method, int region, void *data, size_t count, bool status) {
-    CBMessage msg = CBMESSAGE__INIT;
-
-    void* buffer;
-    msg.type = CBMESSAGE__TYPE__Response;
-    packed_message package = {NULL, 0};
-
-    msg.method = method;
-    msg.region = region;
-    
-    if(data != NULL) {
-        msg.has_data = 1;
-        msg.data.data = data;
-        msg.data.len = count;
-    }
-    if(status) {
-        msg.has_status = 1;
-        msg.status = 1;
-    }
-
-    int packed_size = cbmessage__get_packed_size(&msg);
-    
-    buffer = smalloc(packed_size);
-    cbmessage__pack(&msg, buffer);
-
-    package.buf = buffer;
-    package.size = packed_size;
+    free(msg.data);
 
     return package;
-}
-
-packed_message new_request(message_method method, int region, void *data, size_t count) {
-    
-    CBMessage msg = CBMESSAGE__INIT;
-
-    void* buffer;
-    msg.type = CBMESSAGE__TYPE__Request;
-    packed_message package = {NULL,0};
-    int packed_size;
-
-    switch(method) {
-        case Copy:
-            msg.method = CBMESSAGE__METHOD__Copy;
-            msg.region = region;
-            msg.has_data = 1;
-            msg.data.data = data;
-            msg.data.len = count;
-
-            packed_size = cbmessage__get_packed_size(&msg);
-
-            buffer = smalloc(packed_size);
-            cbmessage__pack(&msg, buffer);
-            
-            package.buf = buffer;
-            package.size = packed_size;
-
-            return package;
-            break;
-
-        case Paste:
-            msg.method = CBMESSAGE__METHOD__Paste;
-            msg.region = region;
-
-            packed_size = cbmessage__get_packed_size(&msg);
-
-            buffer = smalloc(packed_size);
-            cbmessage__pack(&msg, buffer);
-
-            package.buf = buffer;
-            package.size = packed_size;
-
-            return package;
-            break;
-        default:
-            return package;
-            break;
-    }
 }
 
 
@@ -251,10 +174,10 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 
     msg = cbmessage__unpack(NULL, size, buffer);
 
-    size = msg->data.len;
+    size = msg->data->len;
     
-    if (size > count) memcpy(buf, msg->data.data, count);
-    else memcpy(buf, msg->data.data, size);
+    if (size > count) memcpy(buf, msg->data->data, count);
+    else memcpy(buf, msg->data->data, size);
 
     cbmessage__free_unpacked(msg, NULL);
 
@@ -262,4 +185,5 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
     free(response.buf);
 
     return size;
+
 }
