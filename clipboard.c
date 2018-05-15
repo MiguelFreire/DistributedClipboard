@@ -104,7 +104,7 @@ void free_list(connected_list *list) {
     free(list);
 }
 
-    /*END REMOTE Clipboard Linked List */
+/*END REMOTE Clipboard Linked List */
 
 typedef struct store_object {
     void *data;
@@ -115,6 +115,7 @@ typedef struct store_object {
 pthread_t thread_regions[NUM_REGIONS];
 pthread_t thread_unix_com_handler;
 pthread_t thread_inet_com_handler;
+pthread_t thread_upper_com_handler;
 
 /*CLIPBOARD VARIABLES*/
 bool connected_mode;
@@ -136,6 +137,11 @@ struct sockaddr_un client_addr;
 
 connected_list *cblist;
 pthread_rwlock_t rwlocks[NUM_REGIONS];
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+int last_region = -1;
+int uport = 0;
+
 
 packed_message new_sync_message()
 {
@@ -400,6 +406,20 @@ void usage() {
     printf("\t \t port: integer \n");
 }
 
+void *thread_upper_com(void *arg) {
+    int l_region;
+    int bytes;
+    logs("Thread Upper com handler started!",L_INFO);
+    while(1) {
+        pthread_mutex_lock(&mutex);
+        pthread_cond_wait(&cond, &mutex);
+        l_region = last_region;
+        pthread_rwlock_rdlock(&rwlocks[l_region]);
+        bytes = clipboard_copy(socket_fd_inet_remote, l_region, store[l_region].data, store[l_region].size);
+        pthread_rwlock_unlock(&rwlocks[l_region]);
+        pthread_mutex_unlock(&mutex);
+    }
+}
 
 void *thread_unix_client(void *arg)  {
     int *client = (int*) arg;
@@ -433,6 +453,13 @@ void *thread_unix_client(void *arg)  {
                 logs("Handling copy method...", L_INFO);
                 status = handleCopy(*client, msg);
                 status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
+                if(connected_mode && status) {
+                    logs("Sending copy call to parent", L_INFO);
+                    pthread_mutex_lock(&mutex);
+                    last_region = msg->region;
+                    pthread_cond_signal(&cond);
+                    pthread_mutex_unlock(&mutex);
+                }
                 break;
             case Paste:
                 logs("Handling paste method...", L_INFO);
@@ -508,9 +535,12 @@ void configure_unix_com() {
 }
 
 void configure_inet_local_com() {
-    srand(time(NULL)); //Use time as seeder for now, maybe change for getpid? 
-    int local_port = rand()%(64738-1024) + 1024;
-
+    int local_port;
+    if (uport == 0) {
+        srand(time(NULL)); //Use time as seeder for now, maybe change for getpid?
+        local_port = rand() % (64738 - 1024) + 1024;
+    } else local_port = uport;
+    
     socket_fd_inet_local = socket(AF_INET, SOCK_STREAM, 0);
     if(socket_fd_inet_local == -1) {
         logs(strerror(errno), L_ERROR);
@@ -568,13 +598,18 @@ int main(int argc, char **argv) {
         pthread_rwlock_init(&rwlocks[j], NULL);
     }
 
+
     /*Handle Arguments / Program Options*/
-    while((c=getopt(argc, argv, "c:")) != -1) {
+    while((c=getopt(argc, argv, "c:p:")) != -1) {
         switch(c) {
             case 'c':
                 remote_ip = optarg;
                 remote_port = atoi(argv[optind]); //add arguments checker
                 connected_mode = true;
+                break;
+            case 'p':
+                uport = atoi(optarg);
+                logs("PORT FORCED BY USER", L_INFO);
                 break;
             default:
                 logs("No arguments given, launching just in single mode...", L_INFO);
@@ -591,7 +626,7 @@ int main(int argc, char **argv) {
         configure_inet_remote_com();
         printf("MORREU CRL\n");
         clipboard_sync(socket_fd_inet_remote);
-        
+        pthread_create(&thread_upper_com_handler, NULL, thread_upper_com, NULL);
         printf("Copy do crl oh maninho: %s\n", store[3].data);
     }
      //free it in the end!

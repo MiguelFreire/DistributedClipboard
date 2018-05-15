@@ -27,15 +27,15 @@ int main(int argc, char **argv)
     char buffer2[MESSAGE_MAX_SIZE];
     char buffer3[MESSAGE_MAX_SIZE];
 
-    strcpy(buffer, "OLA MUNDO!");
+    strcpy(buffer, "OLA AMIGO");
+    buffer[9] = '\0';
+    strcpy(buffer2, "OLA AMIGO");
+    buffer2[9] = '\0';
 
-    clipboard_copy(clipboard_id, 3, buffer, strlen(buffer)+1);
-    printf("Paste Client: %s \n", buffer2);
     getchar();
-    clipboard_paste(clipboard_id, 3, buffer2, strlen(buffer));
-    buffer2[strlen(buffer)+1] = '\0';
-    printf("Paste Client: %s \n", buffer2);
-    
+    clipboard_paste(clipboard_id, 3, buffer3, strlen(buffer2)+1);
+    buffer3[9] = '\0';
+    printf("%s \n", buffer3);
 
     return 0;
 }
