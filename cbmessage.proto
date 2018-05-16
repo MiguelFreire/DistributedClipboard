@@ -17,5 +17,6 @@ message CBMessage {
     repeated bytes data = 4;
     optional uint32 size = 5;
     optional bool status = 6;
+    optional bool lower_copy = 7;
 
 }

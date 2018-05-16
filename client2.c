@@ -26,19 +26,20 @@ int main(int argc, char **argv)
 
     char *teste_f, *teste_2f;
 
-    teste_f = smalloc(2048);
-    teste_2f = smalloc(2048);
+    teste_f = smalloc(25);
+    teste_2f = smalloc(25);
 
-    for (int i = 0; i < 2048; i++)
+    for (int i = 0; i < 25; i++)
     {
         teste_f[i] = 'c';
     }
-    teste_f[2048] = '\0';
+    teste_f[25] = '\0';
 
-    clipboard_copy(clipboard_id, 3, teste_f, 2048);
+    clipboard_copy(clipboard_id, 3, teste_f, 25);
     getchar();
-    clipboard_paste(clipboard_id, 3, teste_2f, 2048);
+    clipboard_paste(clipboard_id, 3, teste_2f, 25);
     printf("Paste client:%s \n", teste_2f);
-
+    free(teste_f);
+    free(teste_2f);
     return 0;
 }

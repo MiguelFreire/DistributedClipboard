@@ -46,10 +46,12 @@ struct  _CBMessage
   uint32_t size;
   protobuf_c_boolean has_status;
   protobuf_c_boolean status;
+  protobuf_c_boolean has_lower_copy;
+  protobuf_c_boolean lower_copy;
 };
 #define CBMESSAGE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&cbmessage__descriptor) \
-    , CBMESSAGE__TYPE__Request, CBMESSAGE__METHOD__Copy, 0, 0,NULL, 0, 0, 0, 0 }
+    , CBMESSAGE__TYPE__Request, CBMESSAGE__METHOD__Copy, 0, 0,NULL, 0, 0, 0, 0, 0, 0 }
 
 
 /* CBMessage methods */

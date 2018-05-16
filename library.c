@@ -18,7 +18,7 @@ bool validate_region(int region) {
     return (region > 0 || region < NUM_REGIONS);
 }
 
-packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status)  {
+packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status, bool has_lower_copy, bool lower_copy)  {
     CBMessage msg = CBMESSAGE__INIT;
 
     size_t packed_size;
@@ -39,7 +39,10 @@ packed_message new_message(message_type type, message_method method, int region,
         msg.has_size = 1;
         msg.size = count;
     }
-
+    if(has_lower_copy) {
+        msg.has_lower_copy = true;
+        msg.lower_copy = true;
+    }
     if(has_status) {
         msg.has_status = 1;
         msg.status = status;
@@ -77,10 +80,10 @@ int clipboard_connect(char *clipboard_dir) {
         return -1;
     }
     //set timeouts
-    struct timeval tv;
-    tv.tv_sec = TIMEOUT;
-    tv.tv_usec = 0;
-    setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
+    // struct timeval tv;
+    // tv.tv_sec = TIMEOUT;
+    // tv.tv_usec = 0;
+    // setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
 
     return socket_fd;
 }
@@ -94,18 +97,20 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
     
 
     
-    packed_message request = new_message(Request, Copy, region, buf, count, 0,0);
-    packed_message request_with_size = new_message(Request, Copy, region, NULL, request.size, 0,0);
+    packed_message request = new_message(Request, Copy, region, buf, count, 0,0,0,0);
+    packed_message request_with_size = new_message(Request, Copy, region, NULL, request.size, 0,0,0,0);
 
     
     printf("Sending %d bytes\n", request_with_size.size);
     //Send Request to server
     bytes = write(clipboard_id, request_with_size.buf, request_with_size.size);
+    printf("LALLA\n");
     if(bytes == -1) {
         logs(strerror(errno), L_ERROR);
     }
     //Receive response
     bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
+    
     msg = cbmessage__unpack(NULL, bytes, response_buffer);
     
     if(msg->has_status && msg->status) {
@@ -121,6 +126,44 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 
 }
 
+int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count)
+{
+    if (!validate_region(region) || count <= 0 || buf == NULL)
+        return 0;
+
+    CBMessage *msg;
+    uint8_t response_buffer[MESSAGE_MAX_SIZE];
+    int bytes = 0;
+
+    packed_message request = new_message(Request, Copy, region, buf, count, 0, 0, 1, 1);
+    packed_message request_with_size = new_message(Request, Copy, region, NULL, request.size, 0, 0, 0, 0);
+
+    printf("Sending %d bytes\n", request_with_size.size);
+    //Send Request to server
+    bytes = write(clipboard_id, request_with_size.buf, request_with_size.size);
+    printf("LALLA\n");
+    if (bytes == -1)
+    {
+        logs(strerror(errno), L_ERROR);
+    }
+    //Receive response
+    bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
+
+    msg = cbmessage__unpack(NULL, bytes, response_buffer);
+
+    if (msg->has_status && msg->status)
+    {
+        bytes = write(clipboard_id, request.buf, request.size);
+    }
+
+    cbmessage__free_unpacked(msg, NULL);
+
+    free(request.buf);
+    free(request_with_size.buf);
+
+    return bytes;
+}
+
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
     if (!validate_region(region) || count == 0 || buf == NULL) return 0;
 
@@ -130,7 +173,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
     size_t size;
     void *buffer;
     packed_message response;
-    packed_message request = new_message(Request, Paste, region, NULL,0,0,0);
+    packed_message request = new_message(Request, Paste, region, NULL,0,0,0,0,0);
 
     bytes = write(clipboard_id, request.buf, request.size);
     if(bytes == -1) {
@@ -140,9 +183,16 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
     }
 
     bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
+    if (bytes == -1)
+    {
+        logs(strerror(errno), L_ERROR);
+        free(request.buf);
+        return 0;
+    }
     msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
     if(msg->has_status && !msg->status) {
+        printf("Paste went wrong\n");
         cbmessage__free_unpacked(msg, NULL);
         free(request.buf);
         return 0;
@@ -153,7 +203,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 
     cbmessage__free_unpacked(msg, NULL); //lets free the msg to reuse later
 
-    response = new_message(Request, Paste, region, NULL, 0, 1,1);
+    response = new_message(Request, Paste, region, NULL, 0, 1,1,0,0);
 
     bytes = write(clipboard_id, response.buf, response.size);
 

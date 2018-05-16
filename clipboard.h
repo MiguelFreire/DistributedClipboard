@@ -31,12 +31,13 @@ typedef struct packed_message {
     int size;
 } packed_message;
 
-packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status);
+packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status, bool has_lower_copy, bool lower_copy);
 
 
 
 int clipboard_connect(char *clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);
+int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_wait(int clipboard_id, int region, void *buf, size_t count);
 void clipboard_close(int clipboard_id);

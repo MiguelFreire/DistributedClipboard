@@ -110,7 +110,7 @@ const ProtobufCEnumDescriptor cbmessage__method__descriptor =
   cbmessage__method__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCFieldDescriptor cbmessage__field_descriptors[6] =
+static const ProtobufCFieldDescriptor cbmessage__field_descriptors[7] =
 {
   {
     "type",
@@ -184,9 +184,22 @@ static const ProtobufCFieldDescriptor cbmessage__field_descriptors[6] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "lower_copy",
+    7,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_BOOL,
+    offsetof(CBMessage, has_lower_copy),
+    offsetof(CBMessage, lower_copy),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned cbmessage__field_indices_by_name[] = {
   3,   /* field[3] = data */
+  6,   /* field[6] = lower_copy */
   1,   /* field[1] = method */
   2,   /* field[2] = region */
   4,   /* field[4] = size */
@@ -196,7 +209,7 @@ static const unsigned cbmessage__field_indices_by_name[] = {
 static const ProtobufCIntRange cbmessage__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 6 }
+  { 0, 7 }
 };
 const ProtobufCMessageDescriptor cbmessage__descriptor =
 {
@@ -206,7 +219,7 @@ const ProtobufCMessageDescriptor cbmessage__descriptor =
   "CBMessage",
   "",
   sizeof(CBMessage),
-  6,
+  7,
   cbmessage__field_descriptors,
   cbmessage__field_indices_by_name,
   1,  cbmessage__number_ranges,
