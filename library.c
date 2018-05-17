@@ -148,18 +148,21 @@ int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count)
     }
     //Receive response
     bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
-
+    printf("After read\n");
     msg = cbmessage__unpack(NULL, bytes, response_buffer);
+    printf("After read2\n");
 
     if (msg->has_status && msg->status)
     {
         bytes = write(clipboard_id, request.buf, request.size);
     }
+    printf("After read3\n");
 
     cbmessage__free_unpacked(msg, NULL);
 
     free(request.buf);
     free(request_with_size.buf);
+    printf("After read4\n");
 
     return bytes;
 }
