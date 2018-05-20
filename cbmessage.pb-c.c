@@ -80,20 +80,22 @@ const ProtobufCEnumDescriptor cbmessage__type__descriptor =
   cbmessage__type__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCEnumValue cbmessage__method__enum_values_by_number[3] =
+static const ProtobufCEnumValue cbmessage__method__enum_values_by_number[4] =
 {
   { "Copy", "CBMESSAGE__METHOD__Copy", 0 },
   { "Paste", "CBMESSAGE__METHOD__Paste", 1 },
   { "Sync", "CBMESSAGE__METHOD__Sync", 2 },
+  { "Wait", "CBMESSAGE__METHOD__Wait", 3 },
 };
 static const ProtobufCIntRange cbmessage__method__value_ranges[] = {
-{0, 0},{0, 3}
+{0, 0},{0, 4}
 };
-static const ProtobufCEnumValueIndex cbmessage__method__enum_values_by_name[3] =
+static const ProtobufCEnumValueIndex cbmessage__method__enum_values_by_name[4] =
 {
   { "Copy", 0 },
   { "Paste", 1 },
   { "Sync", 2 },
+  { "Wait", 3 },
 };
 const ProtobufCEnumDescriptor cbmessage__method__descriptor =
 {
@@ -102,9 +104,9 @@ const ProtobufCEnumDescriptor cbmessage__method__descriptor =
   "Method",
   "CBMessage__Method",
   "",
-  3,
+  4,
   cbmessage__method__enum_values_by_number,
-  3,
+  4,
   cbmessage__method__enum_values_by_name,
   1,
   cbmessage__method__value_ranges,

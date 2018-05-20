@@ -22,6 +22,7 @@ typedef struct cb_client {
     size_t id;
     pthread_t thread_id;
     size_t socket_fd;
+    size_t socket_teste;
     struct cb_client *next;
 } cb_client; 
 
@@ -37,12 +38,13 @@ connected_list *new_list() {
     return list;
 }
 
-cb_client *new_clipboard(size_t socket_fd) {
+cb_client *new_clipboard(size_t socket_fd, size_t socket_teste) {
     //TODO: validate arguments
     cb_client *cb;
 
     cb = scalloc(1,sizeof(cb_client));
     cb->socket_fd = socket_fd;
+    cb->socket_teste = socket_teste;
     return cb;
 }
 
@@ -140,10 +142,16 @@ struct sockaddr_un client_addr;
 connected_list *cblist;
 connected_list *applist;
 pthread_rwlock_t rwlocks[NUM_REGIONS];
+
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond2 = PTHREAD_COND_INITIALIZER;
+
+pthread_mutex_t wait_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
+
 int last_region = -1;
 int uport = 0;
 
@@ -407,6 +415,60 @@ int handlePaste(int client, CBMessage *msg) {
     return 1;
 }
 
+int handleWait(int client, CBMessage *msg)
+{
+    size_t count;
+    void *data_buffer;
+    packed_message response;
+    packed_message response_with_size;
+    uint8_t response_buffer[MESSAGE_MAX_SIZE];
+    size_t bytes;
+
+    int region = msg->region;
+    printf("REGION: %d\n", region);
+    logs("CHECKING", L_INFO);
+
+    /*Read LOCK!*/
+    pthread_mutex_lock(&wait_mutex);
+    pthread_cond_wait(&wait_cond, &wait_mutex);
+    pthread_rwlock_rdlock(&rwlocks[region]);
+
+    //Create response with data
+    response = new_message(Response, msg->method, region, store[region].data, store[region].size, 1, 1, 0, 0);
+    /*Read UNLOCK!*/
+    pthread_rwlock_unlock(&rwlocks[region]);
+    pthread_mutex_unlock(&wait_mutex);
+    //Create response with size
+    response_with_size = new_message(Response, msg->method, region, NULL, response.size, 0, 0, 0, 0);
+
+    bytes = write(client, response_with_size.buf, response_with_size.size);
+
+    if (bytes == -1)
+    {
+        logs(strerror(errno), L_ERROR);
+    }
+    //Get ready response from client
+    bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
+    msg = cbmessage__unpack(NULL, bytes, response_buffer);
+
+    if (msg->has_status && msg->status)
+    {
+        //Client said it's ok! Let's send the data!
+        bytes = write(client, response.buf, response.size);
+        if (bytes == -1)
+        {
+            logs(strerror(errno), L_ERROR);
+            //We should return and error and free stuff!
+        }
+    }
+
+    cbmessage__free_unpacked(msg, NULL);
+
+    free(response.buf);
+
+    return 1;
+}
+
 void usage() {
     printf("Usage: \n");
     printf("\t Single Mode: clipboard \n");
@@ -430,8 +492,8 @@ void *thread_lower_com(void *arg) {
         cb = cblist->cb;
         while(cb != NULL) {
             printf("Enviando...\n");
-            printf("Socket:%d\n", cb->socket_fd);
-            bytes = clipboard_copy(cb->socket_fd, l_region, store[l_region].data, store[l_region].size);
+            printf("Socket:%d\n", cb->socket_teste);
+            bytes = clipboard_lower_copy(cb->socket_teste, l_region, store[l_region].data, store[l_region].size);
             cb = cb->next;
             printf("Enviado para o filho\n");
         }
@@ -490,8 +552,11 @@ void *thread_unix_client(void *arg)  {
                 status = handleCopy(*client, msg);
                 status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
                 printf("CONNECTED:MODE - %d\n", connected_mode);
-
-                if(connected_mode && status) {
+                pthread_mutex_lock(&wait_mutex);
+                last_region = msg->region;
+                pthread_cond_broadcast(&wait_cond);
+                pthread_mutex_unlock(&wait_mutex);
+                if(connected_mode && status && !msg->lower_copy) {
                     logs("Sending copy call to parent", L_INFO);
                     pthread_mutex_lock(&mutex);
                     last_region = msg->region;
@@ -511,13 +576,17 @@ void *thread_unix_client(void *arg)  {
             case Paste:
                 logs("Handling paste method...", L_INFO);
                 status = handlePaste(*client, msg);
-                status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handlying paste method", L_ERROR);
+                status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handling paste method", L_ERROR);
                 break;
             case Sync:
                 logs("Handling sync method...", L_INFO);
                 status = handleSync(*client, msg);
-                status ? logs("Sync method handled successfuly", L_INFO) : logs("Error handlying sync method", L_ERROR);
+                status ? logs("Sync method handled successfuly", L_INFO) : logs("Error handling sync method", L_ERROR);
                 break;
+            case Wait:
+                logs("Handling wait method...", L_INFO);
+                status = handleWait(*client, msg);
+                status ? logs("Wait methond handled successfuly", L_INFO) : logs("Error handling wait method", L_ERROR);
             default:
                 break;
         }
@@ -531,14 +600,16 @@ void *thread_unix_client(void *arg)  {
 
 void *thread_inet_handler(void * arg) {
         unsigned int addr_size = sizeof(client_addr);
-        int client;        
+        int client;
+        int child;        
         cb_client *rcb;
 
         while(1) {
             logs("Waiting for remote clients...", L_INFO);
             rcb = NULL;
             client = accept(socket_fd_inet_local, (struct sockaddr *) &client_addr, &addr_size);
-            rcb = new_clipboard(client);
+            child = accept(socket_fd_inet_local, (struct sockaddr *)&client_addr, &addr_size);
+            rcb = new_clipboard(client, child);
             add_clipboard(cblist, rcb);
             if(client == -1) {
                 logs(strerror(errno), L_ERROR);
@@ -610,7 +681,8 @@ void configure_inet_local_com() {
 
 void configure_inet_remote_com() {
     socket_fd_inet_remote = socket(AF_INET,SOCK_STREAM,0);
-        if(socket_fd_inet_remote == -1) {
+    socket_fd_inet_child = socket(AF_INET, SOCK_STREAM, 0);
+        if(socket_fd_inet_remote == -1 || socket_fd_inet_child == -1) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
@@ -623,7 +695,9 @@ void configure_inet_remote_com() {
             exit(-1);
         }
 
-        if(connect(socket_fd_inet_remote, (const struct sockaddr*) &remote_addr, sizeof(struct sockaddr_in)) == -1) {
+        if (connect(socket_fd_inet_remote, (const struct sockaddr *)&remote_addr, sizeof(struct sockaddr_in)) == -1 ||
+            connect(socket_fd_inet_child, (const struct sockaddr *)&remote_addr, sizeof(struct sockaddr_in)) == -1)
+        {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
@@ -633,14 +707,15 @@ int main(int argc, char **argv) {
     
     /*Program Vars*/
     int c; //var for opt
-    logs("Creating store...", L_INFO);
+    logs("Store created", L_INFO);
     //TODO: create new store function
     store = scalloc(NUM_REGIONS, sizeof(store_object)); 
     cblist = new_list();
     applist = new_list();
+
     logs("Creating read-write locks...", L_INFO);
     for(int j = 0; j < NUM_REGIONS; j++) {
-        pthread_rwlock_init(&rwlocks[j], NULL);
+        pthread_rwlock_init(&rwlocks[j], NULL); //TODO: validate return
     }
 
 
@@ -663,15 +738,17 @@ int main(int argc, char **argv) {
     }
     /*Configure UNIX Socket Connection */
     configure_unix_com();
+    logs("UNIX Sockets set!", L_INFO);
     /*Configure INET Socket Connection */
     configure_inet_local_com();
-
+    logs("INET Sockets set!", L_INFO);
     if(connected_mode) {
         /*Connect to remote clipboard*/
         configure_inet_remote_com();
-        printf("MORREU CRL\n");
         clipboard_sync(socket_fd_inet_remote);
+        logs("Sync done!", L_INFO);
         pthread_create(&thread_upper_com_handler, NULL, thread_upper_com, NULL);
+        pthread_create(&thread_child, NULL, thread_unix_client, &socket_fd_inet_child);
     }
     pthread_create(&thread_lower_com_handler, NULL, thread_lower_com, NULL);
     //free it in the end!
@@ -703,7 +780,7 @@ int main(int argc, char **argv) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
-        rcb = new_clipboard(client);
+        rcb = new_clipboard(client,0);
         add_clipboard(applist, rcb);
         pthread_create(&rcb->thread_id, NULL, thread_unix_client, &rcb->socket_fd);
 

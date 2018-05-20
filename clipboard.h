@@ -22,6 +22,7 @@
 #define Copy CBMESSAGE__METHOD__Copy
 #define Paste CBMESSAGE__METHOD__Paste
 #define Sync CBMESSAGE__METHOD__Sync
+#define Wait CBMESSAGE__METHOD__Wait
 
 typedef CBMessage__Type message_type;
 typedef CBMessage__Method message_method;

@@ -28,7 +28,8 @@ typedef enum _CBMessage__Type {
 typedef enum _CBMessage__Method {
   CBMESSAGE__METHOD__Copy = 0,
   CBMESSAGE__METHOD__Paste = 1,
-  CBMESSAGE__METHOD__Sync = 2
+  CBMESSAGE__METHOD__Sync = 2,
+  CBMESSAGE__METHOD__Wait = 3
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CBMESSAGE__METHOD)
 } CBMessage__Method;
 

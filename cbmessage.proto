@@ -9,6 +9,7 @@ message CBMessage {
         Copy = 0;
         Paste = 1;
         Sync = 2;
+        Wait = 3;
     }
 
     required Type type = 1;
