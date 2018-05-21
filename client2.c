@@ -38,6 +38,7 @@ int main(int argc, char **argv)
     clipboard_copy(clipboard_id, 3, teste_f, 25);
     getchar();
     clipboard_paste(clipboard_id, 3, teste_2f, 25);
+    teste_2f[25] = '\0';
     printf("Paste client:%s \n", teste_2f);
     free(teste_f);
     free(teste_2f);

@@ -519,14 +519,103 @@ void *thread_upper_com(void *arg) {
     }
 }
 
+void requestHandler(CBMessage *msg, int *client)
+{
+    int status = 0;
+    switch (msg->method)
+    {
+    case Copy:
+        logs("Handling copy method...", L_INFO);
+        status = handleCopy(*client, msg);
+        status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
+        printf("CONNECTED:MODE - %d\n", connected_mode);
+        pthread_mutex_lock(&wait_mutex);
+        last_region = msg->region;
+        pthread_cond_broadcast(&wait_cond);
+        pthread_mutex_unlock(&wait_mutex);
+        if (connected_mode && status && !msg->lower_copy)
+        {
+            logs("Sending copy call to parent", L_INFO);
+            pthread_mutex_lock(&mutex);
+            last_region = msg->region;
+            pthread_cond_signal(&cond);
+            pthread_mutex_unlock(&mutex);
+        }
+        else if ((!connected_mode || msg->lower_copy) && (cblist->size > 0) && status)
+        {
+            logs("Sending copy call to children", L_INFO);
+            pthread_mutex_lock(&mutex2);
+            printf("Entrou20!!\n");
+            last_region = msg->region;
+            pthread_cond_broadcast(&cond2);
+            printf("Entrou21!!\n");
+            pthread_mutex_unlock(&mutex2);
+            printf("COM DONE!\n");
+        }
+        break;
+    case Paste:
+        logs("Handling paste method...", L_INFO);
+        status = handlePaste(*client, msg);
+        status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handling paste method", L_ERROR);
+        break;
+    case Sync:
+        logs("Handling sync method...", L_INFO);
+        status = handleSync(*client, msg);
+        status ? logs("Sync method handled successfuly", L_INFO) : logs("Error handling sync method", L_ERROR);
+        break;
+    case Wait:
+        logs("Handling wait method...", L_INFO);
+        status = handleWait(*client, msg);
+        status ? logs("Wait methond handled successfuly", L_INFO) : logs("Error handling wait method", L_ERROR);
+    default:
+        break;
+    }
+}
+
+void *thread_inet_client(void *arg) {
+    int *client = (int *)arg;
+    printf("Client: %d\n", *client);
+    CBMessage *msg;
+
+    uint8_t size_buffer[MESSAGE_MAX_SIZE];
+    int bytes = 0;
+
+    logs("Client connected!", L_INFO);
+    while (1)
+    {
+        bzero(size_buffer, MESSAGE_MAX_SIZE);
+        bytes = read(*client, size_buffer, MESSAGE_MAX_SIZE);
+        if (bytes == 0)
+        {
+            remove_clipboard_by_thread_id(cblist, pthread_self());
+            logs("CB removed from cb list", L_INFO);
+            break;
+        }
+        if (bytes == -1)
+        {
+            logs(strerror(errno), L_ERROR);
+        }
+        printf("Received %d\n", bytes);
+        //Unpacks from proto to c format
+        msg = cbmessage__unpack(NULL, bytes, size_buffer);
+
+        requestHandler(msg, client);
+    }
+    logs("Client disconnected!", L_INFO);
+    logs("Thread terminating!", L_INFO);
+
+    return 0;
+}
+
+
+
 void *thread_unix_client(void *arg)  {
     int *client = (int*) arg;
     printf("Client: %d\n", *client);
     CBMessage *msg;
         
     uint8_t size_buffer[MESSAGE_MAX_SIZE];
-    int bytes = 0;
-    int status;   
+    int bytes = 0;   
 
     logs("Client connected!", L_INFO);
     while(1) {
@@ -543,53 +632,8 @@ void *thread_unix_client(void *arg)  {
         printf("Received %d\n", bytes);
         //Unpacks from proto to c format
         msg = cbmessage__unpack(NULL, bytes, size_buffer);
-        status = 0;
         
-        switch (msg->method)
-        {
-            case Copy:
-                logs("Handling copy method...", L_INFO);
-                status = handleCopy(*client, msg);
-                status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
-                printf("CONNECTED:MODE - %d\n", connected_mode);
-                pthread_mutex_lock(&wait_mutex);
-                last_region = msg->region;
-                pthread_cond_broadcast(&wait_cond);
-                pthread_mutex_unlock(&wait_mutex);
-                if(connected_mode && status && !msg->lower_copy) {
-                    logs("Sending copy call to parent", L_INFO);
-                    pthread_mutex_lock(&mutex);
-                    last_region = msg->region;
-                    pthread_cond_signal(&cond);
-                    pthread_mutex_unlock(&mutex);
-                } else if((!connected_mode || msg->lower_copy) &&  (cblist->size > 0)) {
-                    logs("Sending copy call to children", L_INFO);
-                    pthread_mutex_lock(&mutex2);
-                    printf("Entrou20!!\n");
-                    last_region = msg->region;
-                    pthread_cond_broadcast(&cond2);
-                    printf("Entrou21!!\n");
-                    pthread_mutex_unlock(&mutex2);
-                    printf("COM DONE!\n");
-                }
-                break;
-            case Paste:
-                logs("Handling paste method...", L_INFO);
-                status = handlePaste(*client, msg);
-                status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handling paste method", L_ERROR);
-                break;
-            case Sync:
-                logs("Handling sync method...", L_INFO);
-                status = handleSync(*client, msg);
-                status ? logs("Sync method handled successfuly", L_INFO) : logs("Error handling sync method", L_ERROR);
-                break;
-            case Wait:
-                logs("Handling wait method...", L_INFO);
-                status = handleWait(*client, msg);
-                status ? logs("Wait methond handled successfuly", L_INFO) : logs("Error handling wait method", L_ERROR);
-            default:
-                break;
-        }
+        requestHandler(msg, client);
 
     }
     logs("Client disconnected!", L_INFO);
@@ -615,7 +659,7 @@ void *thread_inet_handler(void * arg) {
                 logs(strerror(errno), L_ERROR);
                 exit(-1);
             }
-            pthread_create(&rcb->thread_id, NULL, thread_unix_client, &rcb->socket_fd);
+            pthread_create(&rcb->thread_id, NULL, thread_inet_client, &rcb->socket_fd);
             printf("Client criado com a thread ID %lu e socket %d \n", rcb->thread_id, rcb->socket_fd);
             
         }
@@ -715,7 +759,11 @@ int main(int argc, char **argv) {
 
     logs("Creating read-write locks...", L_INFO);
     for(int j = 0; j < NUM_REGIONS; j++) {
-        pthread_rwlock_init(&rwlocks[j], NULL); //TODO: validate return
+        if(pthread_rwlock_init(&rwlocks[j], NULL) != 0) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
+        
     }
 
 

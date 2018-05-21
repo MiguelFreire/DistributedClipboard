@@ -1,7 +1,6 @@
 *.o
 .idea
 *.dSYM
-todo
 client
 clipboard
 cmake-build-debug/CMakeFiles/clion-log.txt

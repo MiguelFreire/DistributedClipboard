@@ -79,11 +79,6 @@ int clipboard_connect(char *clipboard_dir) {
         logs(strerror(errno), L_ERROR);
         return -1;
     }
-    //set timeouts
-    // struct timeval tv;
-    // tv.tv_sec = TIMEOUT;
-    // tv.tv_usec = 0;
-    // setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
 
     return socket_fd;
 }
@@ -104,9 +99,10 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
     printf("Sending %d bytes\n", request_with_size.size);
     //Send Request to server
     bytes = write(clipboard_id, request_with_size.buf, request_with_size.size);
-    printf("LALLA\n");
     if(bytes == -1) {
         logs(strerror(errno), L_ERROR);
+        //free buffers
+        //return 0
     }
     //Receive response
     bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
@@ -328,4 +324,9 @@ int clipboard_wait(int clipboard_id, int region, void* buf, size_t count) {
     free(buffer);
 
     return size;
+}
+
+int clipboard_close(int clipboard_id) {
+    int status = close(clipboard_id);
+    return (status ? status : -1);
 }
