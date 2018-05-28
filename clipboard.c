@@ -6,23 +6,32 @@
 #include <string.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
 #include <arpa/inet.h>
 #include <sys/un.h>
 #include <time.h>
 #include <errno.h>
 #include <pthread.h>
-
 #include "clipboard.h"
 #include "cbmessage.pb-c.h"
 #include "utils.h"
 #include "cblist.h"
 
-
-
 typedef struct store_object {
     void *data;
     size_t size;
 } store_object;
+
+typedef enum client_t {
+    App,
+    Clipboard,
+    Parent
+} client_t;
+
+typedef struct thread_arg {
+    int client;
+    client_t type;
+} thread_arg;
 
 /*Threads*/
 pthread_t thread_regions[NUM_REGIONS];
@@ -41,10 +50,12 @@ store_object *store;
 /*INET_COM VARIABLES*/
 char *remote_ip; //remote ip
 int remote_port;  //remote port
+
 int socket_fd_inet_local; //socket for inet com
 int socket_fd_inet_remote;
 int socket_fd_unix;
 int socket_fd_inet_child;
+
 struct sockaddr_in local_addr; //
 struct sockaddr_in remote_addr; // 
 struct sockaddr_un clipboard_addr;
@@ -66,8 +77,17 @@ pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
 int last_region = -1;
 int uport = 0;
 
-bool teste = false;
 
+void terminate_handler(int signum) {
+	// Closes the sockets
+	close(socket_fd_inet_local);
+	close(socket_fd_inet_remote);
+	close(socket_fd_unix);
+    close(socket_fd_inet_child);
+	unlink(CLIPBOARD_SOCKET);
+	
+	exit(0);
+}
 
 packed_message new_sync_message()
 {
@@ -108,7 +128,7 @@ packed_message new_sync_message()
 int cbstore(size_t region, void* data, size_t count) {
    if(!validate_region(region) || data == NULL || store == NULL)
         return -1;
-
+    //We dont need locks here because it's done in init time
     if(store[region].data != NULL) {
         free(store[region].data);
         store[region].size = 0;
@@ -131,13 +151,20 @@ int clipboard_sync(int clipboard_id) {
 
 
     bytes = write(clipboard_id, request.buf, request.size);
-    if(bytes == -1) {
-        logs(strerror(errno), L_ERROR);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
         free(request.buf);
         return 0;
     }
 
+
     bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(request.buf);
+        return 0;
+    }
+
     msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
     if(msg->has_status && !msg->status) {
@@ -154,17 +181,17 @@ int clipboard_sync(int clipboard_id) {
     response = new_message(Request, Sync, 0, NULL, 0, 1,1,0,0);
 
     bytes = write(clipboard_id, response.buf, response.size);
-
-    if(bytes == -1) {
-        logs(strerror(errno), L_ERROR);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
         free(request.buf);
         free(response.buf);
         return 0;
     }
 
+
     bytes = sread(clipboard_id, buffer, size);
-    if(bytes == -1) {
-        logs(strerror(errno), L_ERROR);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
         free(request.buf);
         free(response.buf);
         return 0;
@@ -202,20 +229,31 @@ int handleSync(int client, CBMessage *msg) {
     response_with_size = new_message(Response, msg->method, 0, NULL, response.size, 0,0,0,0);
 
     bytes = write(client, response_with_size.buf, response_with_size.size);
-
-    if(bytes == -1) {
-        logs(strerror(errno), L_ERROR);
+    
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(response.buf);
+        free(response_with_size.buf);
+        return 0;
     }
     //Get ready response from client
     bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(response.buf);
+        free(response_with_size.buf);
+        return 0;
+    }
     user_msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
     if(user_msg->has_status && user_msg->status) {
         //Client said it's ok! Let's send the data!
         bytes = write(client, response.buf, response.size);
-        if (bytes == -1) {
-            logs(strerror(errno), L_ERROR);
-            //We should return and error and free stuff! 
+        if(bytes == -1 || !bytes) {
+            if(bytes == -1) logs(strerror(errno), L_ERROR);
+            free(response.buf);
+            free(response_with_size.buf);
+            return 0;
         }
     }
 
@@ -245,14 +283,21 @@ int handleCopy(int client, CBMessage *msg) {
     printf("Writing to client...\n");
     bytes = write(client, response.buf, response.size);
     printf("Done Writing\n");
-    if(bytes == -1) {
-        logs(strerror(errno), L_ERROR);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(response.buf);
         free(data_buffer);
         return 0;
     }
 
     //Read all bytes (count) from client
     bytes = sread(client, data_buffer, count);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(response.buf);
+        free(data_buffer);
+        return 0;
+    }
    
     user_msg = cbmessage__unpack(NULL, count, data_buffer);
     //Store new data in the store, store will be shared var
@@ -263,6 +308,7 @@ int handleCopy(int client, CBMessage *msg) {
 
 
     cbmessage__free_unpacked(user_msg, NULL);
+    free(response.buf);
     free(data_buffer);
 
     return 1;
@@ -289,7 +335,11 @@ int handlePaste(int client, CBMessage *msg) {
         
         pthread_rwlock_unlock(&rwlocks[region]);
         bytes = write(client, response.buf, response.size);
-        
+        if(bytes == -1 || !bytes) {
+            if(bytes == -1) logs(strerror(errno), L_ERROR);
+            free(response.buf);
+            return 0;
+        }
         free(response.buf);
         
         return 0;
@@ -303,21 +353,31 @@ int handlePaste(int client, CBMessage *msg) {
     response_with_size = new_message(Response, msg->method, region, NULL, response.size, 0,0,0,0);
 
     bytes = write(client, response_with_size.buf, response_with_size.size);
-
-    if(bytes == -1) {
-        logs(strerror(errno), L_ERROR);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(response.buf);
+        free(response_with_size.buf);
+        return 0;
     }
     //Get ready response from client
     bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(response.buf);
+        free(response_with_size.buf);
+        return 0;
+    }
     user_msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
     if(user_msg->has_status && user_msg->status) {
         //Client said it's ok! Let's send the data!
         bytes = write(client, response.buf, response.size);
-        if (bytes == -1) {
-            logs(strerror(errno), L_ERROR);
-            //We should return and error and free stuff! 
-        }
+        if(bytes == -1 || !bytes) {
+            if(bytes == -1) logs(strerror(errno), L_ERROR);
+            free(response.buf);
+            free(response_with_size.buf);
+            return 0;
+    }
     }
 
     cbmessage__free_unpacked(user_msg, NULL);
@@ -353,23 +413,31 @@ int handleWait(int client, CBMessage *msg)
     response_with_size = new_message(Response, msg->method, region, NULL, response.size, 0, 0, 0, 0);
 
     bytes = write(client, response_with_size.buf, response_with_size.size);
-
-    if (bytes == -1)
-    {
-        logs(strerror(errno), L_ERROR);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(response.buf);
+        free(response_with_size.buf);
+        return 0;
     }
     //Get ready response from client
     bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
+    if(bytes == -1 || !bytes) {
+        if(bytes == -1) logs(strerror(errno), L_ERROR);
+        free(response.buf);
+        free(response_with_size.buf);
+        return 0;
+    }
     user_msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
     if (user_msg->has_status && user_msg->status)
     {
         //Client said it's ok! Let's send the data!
         bytes = write(client, response.buf, response.size);
-        if (bytes == -1)
-        {
-            logs(strerror(errno), L_ERROR);
-            //We should return and error and free stuff!
+        if(bytes == -1 || !bytes) {
+            if(bytes == -1) logs(strerror(errno), L_ERROR);
+            free(response.buf);
+            free(response_with_size.buf);
+            return 0;
         }
     }
 
@@ -401,7 +469,7 @@ void *thread_lower_com(void *arg) {
         cb = cblist->cb;
         
         while(cb != NULL) {
-            bytes = clipboard_copy(cb->socket_teste, l_region, store[l_region].data, store[l_region].size);
+            bytes = clipboard_lower_copy(cb->socket_teste, l_region, store[l_region].data, store[l_region].size);
             cb = cb->next;
         }
         pthread_rwlock_unlock(&rwlocks[l_region]);
@@ -418,80 +486,104 @@ void *thread_upper_com(void *arg) {
         pthread_cond_wait(&cond, &mutex);
         l_region = last_region;
         pthread_rwlock_rdlock(&rwlocks[l_region]);
+        
         bytes = clipboard_copy(socket_fd_inet_remote, l_region, store[l_region].data, store[l_region].size);
+        
+        if(bytes == -1 || !bytes) {
+            connected_mode = 0;
+            pthread_rwlock_unlock(&rwlocks[l_region]);
+            pthread_mutex_unlock(&mutex);
+            pthread_exit(NULL);
+        } 
+
         pthread_rwlock_unlock(&rwlocks[l_region]);
         pthread_mutex_unlock(&mutex);
     }
 }
 
-void requestHandler(CBMessage *msg, int *client)
+void requestHandler(CBMessage *msg, int client)
 {
     int status = 0;
     switch (msg->method)
     {
     case Copy:
         logs("Handling copy method...", L_INFO);
-        status = handleCopy(*client, msg);
+        status = handleCopy(client, msg);
         status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
+        
         pthread_mutex_lock(&wait_mutex);
         last_region = msg->region;
         pthread_cond_broadcast(&wait_cond);
         pthread_mutex_unlock(&wait_mutex);
 
-        if (connected_mode && status && !teste)
+        if (connected_mode && status && !msg->lower_copy)
         {
             logs("Sending copy call to parent", L_INFO);
             pthread_mutex_lock(&mutex);
-            last_region = msg->region;
-            teste = true;
             pthread_cond_signal(&cond);
             pthread_mutex_unlock(&mutex);
         }
-        else if ((!connected_mode || teste) && (cblist->size > 0) && status)
+        else if ((!connected_mode || msg->lower_copy) && (cblist->size > 0) && status)
         {
             logs("Sending copy call to children", L_INFO);
             pthread_mutex_lock(&mutex2);
-            last_region = msg->region;
-            teste = false;
-            pthread_cond_broadcast(&cond2);
+            pthread_cond_signal(&cond2);
             pthread_mutex_unlock(&mutex2);
         }
         break;
     case Paste:
         logs("Handling paste method...", L_INFO);
-        status = handlePaste(*client, msg);
+        status = handlePaste(client, msg);
         status ? logs("Paste method handled successfuly", L_INFO) : logs("Error handling paste method", L_ERROR);
         break;
     case Sync:
         logs("Handling sync method...", L_INFO);
-        status = handleSync(*client, msg);
+        status = handleSync(client, msg);
         status ? logs("Sync method handled successfuly", L_INFO) : logs("Error handling sync method", L_ERROR);
         break;
     case Wait:
         logs("Handling wait method...", L_INFO);
-        status = handleWait(*client, msg);
+        status = handleWait(client, msg);
         status ? logs("Wait methond handled successfuly", L_INFO) : logs("Error handling wait method", L_ERROR);
     default:
         break;
     }
+
+
 }
 
-void *thread_inet_client(void *arg) {
-    int *client = (int *)arg;
+void *thread_client(void *arg) {
+    thread_arg *args = (thread_arg *)arg;
+    int client = args->client;
+    client_t client_type = args->type;
     CBMessage *msg;
 
     uint8_t size_buffer[MESSAGE_MAX_SIZE];
     int bytes = 0;
 
-    logs("Client connected!", L_INFO);
+    logs("Clipboard connected!", L_INFO);
     while (1)
     {
         bzero(size_buffer, MESSAGE_MAX_SIZE);
-        bytes = read(*client, size_buffer, MESSAGE_MAX_SIZE);
+        bytes = read(client, size_buffer, MESSAGE_MAX_SIZE);
         if (bytes == 0)
         {
-            remove_clipboard_by_thread_id(cblist, pthread_self());
-            logs("CB removed from cb list", L_INFO);
+            switch(client_type) {
+                case Clipboard:
+                    remove_clipboard_by_thread_id(cblist, pthread_self());
+                    logs("CB removed from cb list", L_INFO);
+                    break;
+                case App:
+                    remove_clipboard_by_thread_id(applist, pthread_self());
+                    logs("App removed from app list", L_INFO);
+                    break;
+                case Parent:
+                    connected_mode = 0;
+                    logs("Parent died!", L_INFO);
+                    break;
+                default:
+                    break;
+            }
             break;
         }
         if (bytes == -1)
@@ -513,60 +605,44 @@ void *thread_inet_client(void *arg) {
 
 
 
-void *thread_unix_client(void *arg)  {
-    int *client = (int*) arg;
-    printf("Client: %d\n", *client);
-    CBMessage *msg;
-        
-    uint8_t size_buffer[MESSAGE_MAX_SIZE];
-    int bytes = 0;   
-
-    logs("Client connected!", L_INFO);
-    while(1) {
-        bzero(size_buffer, MESSAGE_MAX_SIZE);
-        bytes = read(*client, size_buffer, MESSAGE_MAX_SIZE);
-        if(bytes == 0) {
-            remove_clipboard_by_thread_id(applist, pthread_self());
-            logs("Client removed from client list", L_INFO);
-            break;
-        }
-        if(bytes == -1) {
-            logs(strerror(errno), L_ERROR);
-        }
-        printf("Received %d\n", bytes);
-        //Unpacks from proto to c format
-        msg = cbmessage__unpack(NULL, bytes, size_buffer);
-        
-        requestHandler(msg, client);
-
-        cbmessage__free_unpacked(msg, NULL);
-
-
-    }
-    logs("Client disconnected!", L_INFO);
-    logs("Thread terminating!", L_INFO);
-
-    return 0;
-}
 
 void *thread_inet_handler(void * arg) {
         unsigned int addr_size = sizeof(client_addr);
-        int client;
+        int parent;
         int child;        
         cb_client *rcb;
 
         while(1) {
             logs("Waiting for remote clients...", L_INFO);
             rcb = NULL;
-            client = accept(socket_fd_inet_local, (struct sockaddr *) &client_addr, &addr_size);
-            child = accept(socket_fd_inet_local, (struct sockaddr *)&client_addr, &addr_size);
-            rcb = new_clipboard(client, child);
-            add_clipboard(cblist, rcb);
-            if(client == -1) {
+            
+            parent = accept(socket_fd_inet_local, (struct sockaddr *) &client_addr, &addr_size);
+            if(parent == -1) {
                 logs(strerror(errno), L_ERROR);
                 exit(-1);
             }
-            pthread_create(&rcb->thread_id, NULL, thread_inet_client, &rcb->socket_fd);
+            child = accept(socket_fd_inet_local, (struct sockaddr *)&client_addr, &addr_size);
+            if(child == -1) {
+                logs(strerror(errno), L_ERROR);
+                exit(-1);
+            }
+            
+            rcb = new_clipboard(parent, child);
+            add_clipboard(cblist, rcb);
+            
+            if(parent == -1) {
+                logs(strerror(errno), L_ERROR);
+                exit(-1);
+            }
+
+            thread_arg args;
+            args.client = rcb->socket_fd;
+            args.type = Clipboard;
+
+            if(pthread_create(&rcb->thread_id, NULL, thread_client, &args) != 0) {
+                logs(strerror(errno), L_ERROR);
+                exit(-1);
+            }
             
         }
 
@@ -654,7 +730,10 @@ void configure_inet_remote_com() {
 }
 
 int main(int argc, char **argv) {
-    
+    struct sigaction intHandler;
+
+    intHandler.sa_handler = &terminate_handler;
+    sigaction(SIGINT, &intHandler, NULL);
     /*Program Vars*/
     int c; //var for opt
     logs("Store created", L_INFO);
@@ -663,13 +742,15 @@ int main(int argc, char **argv) {
     cblist = new_list();
     applist = new_list();
 
+    thread_arg child_args;
+    thread_arg app_args;
+
     logs("Creating read-write locks...", L_INFO);
     for(int j = 0; j < NUM_REGIONS; j++) {
         if(pthread_rwlock_init(&rwlocks[j], NULL) != 0) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
-        
     }
 
 
@@ -701,10 +782,26 @@ int main(int argc, char **argv) {
         configure_inet_remote_com();
         clipboard_sync(socket_fd_inet_remote);
         logs("Sync done!", L_INFO);
-        pthread_create(&thread_upper_com_handler, NULL, thread_upper_com, NULL);
-        pthread_create(&thread_child, NULL, thread_unix_client, &socket_fd_inet_child);
+        
+        //Create communication thread for parent
+        if(pthread_create(&thread_upper_com_handler, NULL, thread_upper_com, NULL) != 0) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
+        //Create communication thread for children
+        child_args.client = socket_fd_inet_child;
+        child_args.type = Parent;
+
+        if(pthread_create(&thread_child, NULL, thread_client, &child_args) != 0) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
     }
-    pthread_create(&thread_lower_com_handler, NULL, thread_lower_com, NULL);
+
+    if(pthread_create(&thread_lower_com_handler, NULL, thread_lower_com, NULL) != 0) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    }
     //free it in the end!
 
     //single mode
@@ -720,10 +817,13 @@ int main(int argc, char **argv) {
     
     unsigned int addr_size = sizeof(client_addr);
     int client;        
-    cb_client *rcb;
+    cb_client *app;
     
     
-    pthread_create(&thread_inet_com_handler, NULL, thread_inet_handler, NULL);
+    if(pthread_create(&thread_inet_com_handler, NULL, thread_inet_handler, NULL) != 0) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    }
 
     while(1) {
         logs("Waiting for local clients...", L_INFO);
@@ -733,9 +833,17 @@ int main(int argc, char **argv) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
-        rcb = new_clipboard(client,0);
-        add_clipboard(applist, rcb);
-        pthread_create(&rcb->thread_id, NULL, thread_unix_client, &rcb->socket_fd);
+        app = new_clipboard(client,0);
+        add_clipboard(applist, app);
+        
+        
+        app_args.client = app->socket_fd;
+        app_args.type = App;
+
+        if(pthread_create(&app->thread_id, NULL, thread_client, &app_args) != 0) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
 
     }
     //TODO: free store and free cblist
