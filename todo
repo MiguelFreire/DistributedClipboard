@@ -21,7 +21,7 @@ Secundarios:
 ☐ Criar ambiente no docker
 ☐ Criar Stress Tests
 ☐ Fechar sockets
-☐ Adicionar lock no sync
+☐ Adicionar lock no sync 
 
 Optimizações:
 ☐ Se a data a dar copy for igual retornar logo - hash

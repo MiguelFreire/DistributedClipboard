@@ -155,6 +155,8 @@ pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
 int last_region = -1;
 int uport = 0;
 
+bool teste = false;
+
 
 packed_message new_sync_message()
 {
@@ -282,6 +284,7 @@ int handleSync(int client, CBMessage *msg) {
     packed_message response_with_size;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
     size_t bytes;
+    CBMessage *user_msg;
     
 
     //Create response with data
@@ -296,9 +299,9 @@ int handleSync(int client, CBMessage *msg) {
     }
     //Get ready response from client
     bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
-    msg = cbmessage__unpack(NULL, bytes, response_buffer);
+    user_msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
-    if(msg->has_status && msg->status) {
+    if(user_msg->has_status && user_msg->status) {
         //Client said it's ok! Let's send the data!
         bytes = write(client, response.buf, response.size);
         if (bytes == -1) {
@@ -307,7 +310,7 @@ int handleSync(int client, CBMessage *msg) {
         }
     }
 
-    cbmessage__free_unpacked(msg, NULL);
+    cbmessage__free_unpacked(user_msg, NULL);
 
     free(response.buf);
 
@@ -319,6 +322,7 @@ int handleCopy(int client, CBMessage *msg) {
     void *data_buffer;
     packed_message response;
     size_t bytes;
+    CBMessage *user_msg;
 
     //Save data size to count
     count = msg->size;
@@ -327,7 +331,7 @@ int handleCopy(int client, CBMessage *msg) {
     //Tell the client we are ready to receive data
     response = new_message(Response, msg->method, msg->region,NULL,0,1,1,0,0); 
     //Lets clear the message structure to reuse
-    cbmessage__free_unpacked(msg,NULL); 
+
     //Write response to client
     printf("Writing to client...\n");
     bytes = write(client, response.buf, response.size);
@@ -341,15 +345,15 @@ int handleCopy(int client, CBMessage *msg) {
     //Read all bytes (count) from client
     bytes = sread(client, data_buffer, count);
    
-    msg = cbmessage__unpack(NULL, count, data_buffer);
+    user_msg = cbmessage__unpack(NULL, count, data_buffer);
     //Store new data in the store, store will be shared var
 
-    pthread_rwlock_wrlock(&rwlocks[msg->region]);
-    cbstore(msg->region, msg->data->data, msg->data->len);
-    pthread_rwlock_unlock(&rwlocks[msg->region]);
+    pthread_rwlock_wrlock(&rwlocks[user_msg->region]);
+    cbstore(user_msg->region, user_msg->data->data, user_msg->data->len);
+    pthread_rwlock_unlock(&rwlocks[user_msg->region]);
 
 
-    cbmessage__free_unpacked(msg, NULL);
+    cbmessage__free_unpacked(user_msg, NULL);
     free(data_buffer);
 
     return 1;
@@ -362,6 +366,7 @@ int handlePaste(int client, CBMessage *msg) {
     packed_message response_with_size;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
     size_t bytes;
+    CBMessage *user_msg;
 
     int region = msg->region;
     printf("REGION: %d\n", region);
@@ -374,7 +379,7 @@ int handlePaste(int client, CBMessage *msg) {
         //there is no data in that region send negative response
         response = new_message(Response, msg->method, msg->region, NULL, 0, 1,0,0,0);
         
-        cbmessage__free_unpacked(msg, NULL);
+        
         pthread_rwlock_unlock(&rwlocks[region]);
         bytes = write(client, response.buf, response.size);
         
@@ -397,9 +402,9 @@ int handlePaste(int client, CBMessage *msg) {
     }
     //Get ready response from client
     bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
-    msg = cbmessage__unpack(NULL, bytes, response_buffer);
+    user_msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
-    if(msg->has_status && msg->status) {
+    if(user_msg->has_status && user_msg->status) {
         //Client said it's ok! Let's send the data!
         bytes = write(client, response.buf, response.size);
         if (bytes == -1) {
@@ -408,7 +413,7 @@ int handlePaste(int client, CBMessage *msg) {
         }
     }
 
-    cbmessage__free_unpacked(msg, NULL);
+    cbmessage__free_unpacked(user_msg, NULL);
 
     free(response.buf);
 
@@ -423,6 +428,7 @@ int handleWait(int client, CBMessage *msg)
     packed_message response_with_size;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
     size_t bytes;
+    CBMessage *user_msg;
 
     int region = msg->region;
     printf("REGION: %d\n", region);
@@ -449,9 +455,9 @@ int handleWait(int client, CBMessage *msg)
     }
     //Get ready response from client
     bytes = read(client, response_buffer, MESSAGE_MAX_SIZE);
-    msg = cbmessage__unpack(NULL, bytes, response_buffer);
+    user_msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
-    if (msg->has_status && msg->status)
+    if (user_msg->has_status && user_msg->status)
     {
         //Client said it's ok! Let's send the data!
         bytes = write(client, response.buf, response.size);
@@ -462,7 +468,7 @@ int handleWait(int client, CBMessage *msg)
         }
     }
 
-    cbmessage__free_unpacked(msg, NULL);
+    cbmessage__free_unpacked(user_msg, NULL);
 
     free(response.buf);
 
@@ -530,23 +536,28 @@ void requestHandler(CBMessage *msg, int *client)
         status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
         printf("CONNECTED:MODE - %d\n", connected_mode);
         pthread_mutex_lock(&wait_mutex);
+        printf("REGIÂO CRL: %d\n", msg->region);
         last_region = msg->region;
         pthread_cond_broadcast(&wait_cond);
         pthread_mutex_unlock(&wait_mutex);
-        if (connected_mode && status && !msg->lower_copy)
+        printf("Status: %d\n", status);
+        printf ("Teste: %d\n", teste);
+        if (connected_mode && status && !teste)
         {
             logs("Sending copy call to parent", L_INFO);
             pthread_mutex_lock(&mutex);
             last_region = msg->region;
+            teste = true;
             pthread_cond_signal(&cond);
             pthread_mutex_unlock(&mutex);
         }
-        else if ((!connected_mode || msg->lower_copy) && (cblist->size > 0) && status)
+        else if ((!connected_mode || teste) && (cblist->size > 0) && status)
         {
             logs("Sending copy call to children", L_INFO);
             pthread_mutex_lock(&mutex2);
             printf("Entrou20!!\n");
             last_region = msg->region;
+            teste = false;
             pthread_cond_broadcast(&cond2);
             printf("Entrou21!!\n");
             pthread_mutex_unlock(&mutex2);
@@ -600,6 +611,7 @@ void *thread_inet_client(void *arg) {
         msg = cbmessage__unpack(NULL, bytes, size_buffer);
 
         requestHandler(msg, client);
+        cbmessage__free_unpacked(msg, NULL);
     }
     logs("Client disconnected!", L_INFO);
     logs("Thread terminating!", L_INFO);
@@ -634,6 +646,9 @@ void *thread_unix_client(void *arg)  {
         msg = cbmessage__unpack(NULL, bytes, size_buffer);
         
         requestHandler(msg, client);
+
+        cbmessage__free_unpacked(msg, NULL);
+
 
     }
     logs("Client disconnected!", L_INFO);
