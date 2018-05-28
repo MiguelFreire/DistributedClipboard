@@ -3,8 +3,8 @@ CFLAGS = -Wall -g
 
 all: clipboard client client2
 
-clipboard: clipboard.o utils.o library.o cbmessage.pb-c.o 
-			$(CC) $(CFLAGS) -o clipboard clipboard.o utils.o cbmessage.pb-c.o library.o -lprotobuf-c -lpthread
+clipboard: clipboard.o utils.o library.o cbmessage.pb-c.o cblist.o
+			$(CC) $(CFLAGS) -o clipboard clipboard.o utils.o cbmessage.pb-c.o library.o cblist.o -lprotobuf-c -lpthread
 client: client.o utils.o library.o cbmessage.pb-c.o 
 			$(CC) $(CFLAGS) -o client client.o utils.o library.o cbmessage.pb-c.o -lprotobuf-c
 client2: client2.o utils.o library.o cbmessage.pb-c.o 
@@ -21,6 +21,8 @@ cbmessage.pb-c.o: cbmessage.pb-c.c cbmessage.pb-c.h
 			$(CC) $(CFLAGS) -c cbmessage.pb-c.c 
 library.o: library.c clipboard.h cbmessage.pb-c.h
 			$(CC) $(CFLAGS) -c library.c 
+cblist.o: cblist.c cblist.h utils.h
+			$(CC) $(CFLAGS) -c cblist.c 
 
 clean:
 			rm -rf *.o

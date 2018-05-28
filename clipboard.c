@@ -15,98 +15,9 @@
 #include "clipboard.h"
 #include "cbmessage.pb-c.h"
 #include "utils.h"
+#include "cblist.h"
 
-/*REMOTE Clipbaord Linked Lists*/
 
-typedef struct cb_client {
-    size_t id;
-    pthread_t thread_id;
-    size_t socket_fd;
-    size_t socket_teste;
-    struct cb_client *next;
-} cb_client; 
-
-typedef struct connected_list {
-    cb_client *cb;
-    size_t size;
-} connected_list;
-
-connected_list *new_list() {
-    connected_list *list;
-    list = scalloc(1,sizeof(connected_list)); //Init all values to default
-
-    return list;
-}
-
-cb_client *new_clipboard(size_t socket_fd, size_t socket_teste) {
-    //TODO: validate arguments
-    cb_client *cb;
-
-    cb = scalloc(1,sizeof(cb_client));
-    cb->socket_fd = socket_fd;
-    cb->socket_teste = socket_teste;
-    return cb;
-}
-
-void add_clipboard(connected_list *list, cb_client *cb) {
-    cb_client *aux;
-
-    if(list->cb == NULL) { //If no head exists add it to the head
-       list->cb = cb;
-       list->size++;
-       cb->id = list->size;
-       return;
-   }
-
-   aux = list->cb;
-   while(aux->next != NULL) aux = aux->next; //go to the end of the list
-   
-    aux->next = cb;
-    list->size++;
-}
-
-void remove_clipboard_by_thread_id(connected_list *list, pthread_t thread_id) {
-    cb_client *aux;
-    cb_client *cur;
-    bool found = false;
-    if(list->cb == NULL) return;
-    cur = list->cb;
-    //Current After
-    //Next To be removed
-    //Next next 
-
-    while(cur->next != NULL) {
-        if(cur->next->thread_id == thread_id) {
-            found = true;
-            break;
-        }
-        cur = cur->next;
-    }
-    if(found) {
-        aux = cur->next; //to be removed
-        cur->next = aux->next;
-
-        free(aux);
-        list->size--;
-     }
-   
-}
-
-void free_list(connected_list *list) {
-    cb_client *aux, *cur;
-
-    cur = list->cb;
-
-    while(cur != NULL) {
-        aux = cur;
-        cur = aux->next;
-        free(aux);
-    }
-
-    free(list);
-}
-
-/*END REMOTE Clipboard Linked List */
 
 typedef struct store_object {
     void *data;
@@ -174,8 +85,10 @@ packed_message new_sync_message()
     for(int i = 0; i < NUM_REGIONS; i++) {
         msg.n_data++;
         if(store[i].size > 0) {
+            pthread_rwlock_rdlock(&rwlocks[i]);
             msg.data[i].data = store[i].data;
             msg.data[i].len = store[i].size;
+            pthread_rwlock_unlock(&rwlocks[i]);
         }
     }
 
@@ -215,7 +128,7 @@ int clipboard_sync(int clipboard_id) {
     void *buffer;
     packed_message response;
     packed_message request = new_message(Request, Sync, 0, NULL,0,0,0,0,0);
-    store_object *aux;
+
 
     bytes = write(clipboard_id, request.buf, request.size);
     if(bytes == -1) {
@@ -259,8 +172,6 @@ int clipboard_sync(int clipboard_id) {
 
     msg = cbmessage__unpack(NULL, size, buffer);
 
-    printf("%d %s\n", msg->data[3].len, msg->data[3].data);
-
     for(int i = 0; i < NUM_REGIONS; i++) {
         if(msg->data[i].len > 0) {
             store[i].data = smalloc(msg->data[i].len);
@@ -278,8 +189,6 @@ int clipboard_sync(int clipboard_id) {
 }
 
 int handleSync(int client, CBMessage *msg) {
-    size_t count;
-    void *data_buffer;
     packed_message response;
     packed_message response_with_size;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
@@ -360,8 +269,6 @@ int handleCopy(int client, CBMessage *msg) {
 }
 
 int handlePaste(int client, CBMessage *msg) {
-    size_t count;
-    void *data_buffer;
     packed_message response;
     packed_message response_with_size;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
@@ -422,8 +329,6 @@ int handlePaste(int client, CBMessage *msg) {
 
 int handleWait(int client, CBMessage *msg)
 {
-    size_t count;
-    void *data_buffer;
     packed_message response;
     packed_message response_with_size;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
@@ -489,24 +394,18 @@ void *thread_lower_com(void *arg) {
     cb_client *cb;
     logs("Lower Com Thread launched", L_INFO);
     while(1) {
-        printf("COND2\n");
         pthread_mutex_lock(&mutex2);
         pthread_cond_wait(&cond2, &mutex2);
         l_region = last_region;
         pthread_rwlock_rdlock(&rwlocks[l_region]);
-        printf("Entrou3!!\n");
         cb = cblist->cb;
+        
         while(cb != NULL) {
-            printf("Enviando...\n");
-            printf("Socket:%d\n", cb->socket_teste);
-            bytes = clipboard_lower_copy(cb->socket_teste, l_region, store[l_region].data, store[l_region].size);
+            bytes = clipboard_copy(cb->socket_teste, l_region, store[l_region].data, store[l_region].size);
             cb = cb->next;
-            printf("Enviado para o filho\n");
         }
         pthread_rwlock_unlock(&rwlocks[l_region]);
-        printf("Saiu1!!\n");
         pthread_mutex_unlock(&mutex2);
-        printf("Saiu2!!\n");
     }
 }
 
@@ -534,14 +433,11 @@ void requestHandler(CBMessage *msg, int *client)
         logs("Handling copy method...", L_INFO);
         status = handleCopy(*client, msg);
         status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
-        printf("CONNECTED:MODE - %d\n", connected_mode);
         pthread_mutex_lock(&wait_mutex);
-        printf("REGIÂO CRL: %d\n", msg->region);
         last_region = msg->region;
         pthread_cond_broadcast(&wait_cond);
         pthread_mutex_unlock(&wait_mutex);
-        printf("Status: %d\n", status);
-        printf ("Teste: %d\n", teste);
+
         if (connected_mode && status && !teste)
         {
             logs("Sending copy call to parent", L_INFO);
@@ -555,13 +451,10 @@ void requestHandler(CBMessage *msg, int *client)
         {
             logs("Sending copy call to children", L_INFO);
             pthread_mutex_lock(&mutex2);
-            printf("Entrou20!!\n");
             last_region = msg->region;
             teste = false;
             pthread_cond_broadcast(&cond2);
-            printf("Entrou21!!\n");
             pthread_mutex_unlock(&mutex2);
-            printf("COM DONE!\n");
         }
         break;
     case Paste:
@@ -585,7 +478,6 @@ void requestHandler(CBMessage *msg, int *client)
 
 void *thread_inet_client(void *arg) {
     int *client = (int *)arg;
-    printf("Client: %d\n", *client);
     CBMessage *msg;
 
     uint8_t size_buffer[MESSAGE_MAX_SIZE];
@@ -606,7 +498,7 @@ void *thread_inet_client(void *arg) {
         {
             logs(strerror(errno), L_ERROR);
         }
-        printf("Received %d\n", bytes);
+
         //Unpacks from proto to c format
         msg = cbmessage__unpack(NULL, bytes, size_buffer);
 
@@ -675,7 +567,6 @@ void *thread_inet_handler(void * arg) {
                 exit(-1);
             }
             pthread_create(&rcb->thread_id, NULL, thread_inet_client, &rcb->socket_fd);
-            printf("Client criado com a thread ID %lu e socket %d \n", rcb->thread_id, rcb->socket_fd);
             
         }
 
@@ -829,7 +720,6 @@ int main(int argc, char **argv) {
     
     unsigned int addr_size = sizeof(client_addr);
     int client;        
-    pthread_t id;
     cb_client *rcb;
     
     

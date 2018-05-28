@@ -36,7 +36,6 @@ packed_message new_message(message_type type, message_method method, int region,
 
 int clipboard_connect(char *clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);
-int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_wait(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_close(int clipboard_id);
