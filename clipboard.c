@@ -40,7 +40,8 @@ pthread_t thread_inet_com_handler;
 pthread_t thread_upper_com_handler;
 pthread_t thread_lower_com_handler;
 pthread_t thread_child;
-    /*CLIPBOARD VARIABLES*/
+
+/*CLIPBOARD VARIABLES*/
 bool connected_mode;
 char *local_ip;
 int local_port;
@@ -56,8 +57,8 @@ int socket_fd_inet_remote;
 int socket_fd_unix;
 int socket_fd_inet_child;
 
-struct sockaddr_in local_addr; //
-struct sockaddr_in remote_addr; // 
+struct sockaddr_in local_addr; 
+struct sockaddr_in remote_addr; 
 struct sockaddr_un clipboard_addr;
 struct sockaddr_un client_addr;
 
@@ -77,7 +78,13 @@ pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
 int last_region = -1;
 int uport = 0;
 
-//handler ctrl+c
+/*
+@Name: terminate_handler()
+@Arg: (int) signum - signal id
+@Desc: Handles ctrl+c
+@Return: void
+*/
+
 void terminate_handler(int signum) {
 	// Closes the sockets
 	close(socket_fd_inet_local);
@@ -85,10 +92,16 @@ void terminate_handler(int signum) {
 	close(socket_fd_unix);
     close(socket_fd_inet_child);
 	unlink(CLIPBOARD_SOCKET);
-	
 	exit(0);
 }
-//creates a message to sync with another clipboard
+
+/*
+@Name: new_sync_message()
+@Arg: None;
+@Desc: Creates a message to sync with another clipboard;
+@Return: struct packed_message;
+*/
+
 packed_message new_sync_message()
 {
     CBMessage msg = CBMESSAGE__INIT;
@@ -124,7 +137,17 @@ packed_message new_sync_message()
 
     return package;
 }
-//saves data in the store/regions
+
+/*
+@Name: cbstore()
+@Args: (size_t) region - region number;
+       (void *) data - pointer to data buffer;
+       (size_t) count - number of bytes to be copied;
+@Desc: Saves data in store/regions;
+@Return: (int) 1 if the data has been saved correctly;
+              -1 if something went wrong;
+*/
+
 int cbstore(size_t region, void* data, size_t count) {
    if(!validate_region(region) || data == NULL || store == NULL)
         return -1;
@@ -140,7 +163,14 @@ int cbstore(size_t region, void* data, size_t count) {
 
     return 1;
 }
-//performs a sync request to the clipboard identified by clipboard_id
+
+/*
+@Name: clipboard_sync()
+@Args: (int) clipboard_id - id of the clipboard that sends a request do sync;
+@Desc: Performs a syncronization request to the clipboard identified by clipboard_id;
+@Return: (int) size of all regions;
+*/
+
 int clipboard_sync(int clipboard_id) {
     CBMessage *msg;
     int bytes = 0;
@@ -157,7 +187,6 @@ int clipboard_sync(int clipboard_id) {
         free(request.buf);
         return 0;
     }
-
 
     bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
     if(bytes == -1 || !bytes) {
@@ -215,8 +244,16 @@ int clipboard_sync(int clipboard_id) {
 
     return size;
 }
-//handle sync request
-int handleSync(int client, CBMessage *msg) {
+/*
+@Name: handleSync()
+@Args: (int) client - id of the client socket;
+       (CBMessage*) msg - pointer to the message recieved;
+@Desc: Handles syncronization request;
+@Return: (int) 1 if the sync request was handled right;
+               0 if something went wrong with the comunication;
+*/
+ 
+ int handleSync(int client, CBMessage *msg) {
     packed_message response;
     packed_message response_with_size;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
@@ -264,7 +301,15 @@ int handleSync(int client, CBMessage *msg) {
 
     return 1;
 }
-//handle copy request
+/*
+@Name: handleCopy()
+@Args: (int) client - id of the client socket;
+       (CBMessage*) msg - pointer to the message recieved;
+@Desc: Handles copy request;
+@Return: (int) 1 if the copy request was handled right;
+               0 if something went wrong with the comunication;
+*/
+
 int handleCopy(int client, CBMessage *msg) {
     size_t count;
     void *data_buffer;
@@ -281,9 +326,8 @@ int handleCopy(int client, CBMessage *msg) {
     //Lets clear the message structure to reuse
 
     //Write response to client
-    printf("Writing to client...\n");
-    bytes = write(client, response.buf, response.size);
-    printf("Done Writing\n");
+     bytes = write(client, response.buf, response.size);
+   
     if(bytes == -1 || !bytes) {
         if(bytes == -1) logs(strerror(errno), L_ERROR);
         free(response.buf);
@@ -314,6 +358,14 @@ int handleCopy(int client, CBMessage *msg) {
 
     return 1;
 }
+/*
+@Name: handlePaste()
+@Args: (int) client - id of the client socket;
+       (CBMessage*) msg - pointer to the message recieved;
+@Desc: Handles paste request;
+@Return: (int) 1 if the paste request was handled right;
+               0 if something went wrong with the comunication;
+*/
 
 int handlePaste(int client, CBMessage *msg) {
     packed_message response;
@@ -323,8 +375,7 @@ int handlePaste(int client, CBMessage *msg) {
     CBMessage *user_msg;
 
     int region = msg->region;
-    printf("REGION: %d\n", region);
-    logs("CHECKING", L_INFO);
+      logs("CHECKING", L_INFO);
 
     /*Read LOCK!*/
     pthread_rwlock_rdlock(&rwlocks[region]);
@@ -332,8 +383,7 @@ int handlePaste(int client, CBMessage *msg) {
         logs("Region has no data", L_INFO);
         //there is no data in that region send negative response
         response = new_message(Response, msg->method, msg->region, NULL, 0, 1,0,0,0);
-        
-        
+         
         pthread_rwlock_unlock(&rwlocks[region]);
         bytes = write(client, response.buf, response.size);
         if(bytes == -1 || !bytes) {
@@ -387,7 +437,14 @@ int handlePaste(int client, CBMessage *msg) {
 
     return 1;
 }
-//handle wait request
+/*
+@Name: handleWait()
+@Args: (int) client - id of the client socket;
+       (CBMessage*) msg - pointer to the message recieved;
+@Desc: Handles wait request;
+@Return: (int) 1 if the wait request was handled right;
+               0 if something went wrong with the comunication;
+*/
 int handleWait(int client, CBMessage *msg)
 {
     packed_message response;
@@ -397,8 +454,8 @@ int handleWait(int client, CBMessage *msg)
     CBMessage *user_msg;
 
     int region = msg->region;
-    printf("REGION: %d\n", region);
-    logs("CHECKING", L_INFO);
+ 
+     logs("CHECKING", L_INFO);
 
     /*Read LOCK!*/
     pthread_mutex_lock(&wait_mutex);
@@ -448,7 +505,13 @@ int handleWait(int client, CBMessage *msg)
 
     return 1;
 }
-//when the program arguments are invalid show this message
+/*
+@Name: usage()
+@Args: None;
+@Desc: Shows a messsage if the program arguments are invalid;
+@Return: (void);
+*/
+
 void usage() {
     printf("Usage: \n");
     printf("\t Single Mode: clipboard \n");
@@ -456,7 +519,13 @@ void usage() {
     printf("\t \t ip: ipv4 dot format \n");
     printf("\t \t port: integer \n");
 }
-//Thread that handles all lower communication copy from parent to all children
+/*
+@Name: thread_lower_com()
+@Args: (void *) arg;
+@Desc: Thread that handles all lower communication copy from parent to all children;
+@Return: (void *);
+*/
+
 void *thread_lower_com(void *arg) {
     int l_region;
     int bytes;
@@ -477,7 +546,13 @@ void *thread_lower_com(void *arg) {
         pthread_mutex_unlock(&mutex2);
     }
 }
-//thread that handle alls comumunication with the father children->parent
+/*
+@Name: thread_upper_com()
+@Args: (void *) arg;
+@Desc: Thread that handles all communication from children to the parent;
+@Return: (void *);
+*/
+
 void *thread_upper_com(void *arg) {
     int l_region;
     int bytes;
@@ -501,7 +576,14 @@ void *thread_upper_com(void *arg) {
         pthread_mutex_unlock(&mutex);
     }
 }
-//Handles the request by type
+/*
+@Name: requestHandler()
+@Args: (CBMessage *) msg - pointer to the message recieved;
+       (int) client - id of the client socket;
+@Desc: Handles the request by type;
+@Return: (void);
+*/
+
 void requestHandler(CBMessage *msg, int client)
 {
     int status = 0;
@@ -552,7 +634,16 @@ void requestHandler(CBMessage *msg, int client)
 
 
 }
-//Thread that handles all types of network communication app-clipboard/parent-children/clipboard-clipboard
+/*
+@Name: thread_client()
+@Args: (void *) arg;
+@Desc: Thread that handles all types of network communication:
+    -> app-clipboard;
+    -> parent-children;
+    -> clipboard-clipboard;
+@Return: (void *);
+*/
+
 void *thread_client(void *arg) {
     thread_arg *args = (thread_arg *)arg;
     int client = args->client;
@@ -603,10 +694,12 @@ void *thread_client(void *arg) {
 
     return 0;
 }
-
-
-
-//Thread that waits and accepts internet clients (clipboards)
+/*
+@Name: thread_inet_handler()
+@Args: (void *) arg;
+@Desc: Thread that waits and accepts internet clients (clipboards);
+@Return: (void *);
+*/
 void *thread_inet_handler(void * arg) {
         unsigned int addr_size = sizeof(client_addr);
         int parent;
@@ -649,7 +742,13 @@ void *thread_inet_handler(void * arg) {
 
     return 0;
 }
-//Function that configures sockets for unix domains communication
+/*
+@Name: configure_unix_com()
+@Args: None;
+@Desc: Configues sockets for unix domains communication;
+@Return: (void);
+*/
+
 void configure_unix_com() {
     clipboard_addr.sun_family = AF_UNIX; 
     strcpy(clipboard_addr.sun_path, CLIPBOARD_SOCKET);
@@ -675,7 +774,14 @@ void configure_unix_com() {
         exit(-1);
     }
 }
-//Function that configures sockets for the clipboard to accept remote connections
+
+/*
+@Name: configure_inet_local_com()
+@Args: None;
+@Desc: Configues sockets for the clipboard to accept remote connections;
+@Return: (void);
+*/
+
 void configure_inet_local_com() {
     int local_port;
     if (uport == 0) {
@@ -705,7 +811,13 @@ void configure_inet_local_com() {
 
     printf("Port:%d\n", local_port);
 }
-//Configure internet domain sockets
+/*
+@Name: configure_inet_remote_com()
+@Args: None;
+@Desc: Configues sockets for internet domains communication;
+@Return: (void);
+*/
+
 void configure_inet_remote_com() {
     socket_fd_inet_remote = socket(AF_INET,SOCK_STREAM,0);
     socket_fd_inet_child = socket(AF_INET, SOCK_STREAM, 0);
