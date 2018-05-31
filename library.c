@@ -17,7 +17,7 @@
 bool validate_region(int region) {
     return (region > 0 || region < NUM_REGIONS);
 }
-
+//creates a well defined message for network communication
 packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status, bool has_lower_copy, bool lower_copy)  {
     CBMessage msg = CBMESSAGE__INIT;
 

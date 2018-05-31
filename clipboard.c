@@ -77,7 +77,7 @@ pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
 int last_region = -1;
 int uport = 0;
 
-
+//handler ctrl+c
 void terminate_handler(int signum) {
 	// Closes the sockets
 	close(socket_fd_inet_local);
@@ -88,7 +88,7 @@ void terminate_handler(int signum) {
 	
 	exit(0);
 }
-
+//creates a message to sync with another clipboard
 packed_message new_sync_message()
 {
     CBMessage msg = CBMESSAGE__INIT;
@@ -124,7 +124,7 @@ packed_message new_sync_message()
 
     return package;
 }
-
+//saves data in the store/regions
 int cbstore(size_t region, void* data, size_t count) {
    if(!validate_region(region) || data == NULL || store == NULL)
         return -1;
@@ -140,6 +140,7 @@ int cbstore(size_t region, void* data, size_t count) {
 
     return 1;
 }
+//performs a sync request to the clipboard identified by clipboard_id
 int clipboard_sync(int clipboard_id) {
     CBMessage *msg;
     int bytes = 0;
@@ -214,7 +215,7 @@ int clipboard_sync(int clipboard_id) {
 
     return size;
 }
-
+//handle sync request
 int handleSync(int client, CBMessage *msg) {
     packed_message response;
     packed_message response_with_size;
@@ -263,7 +264,7 @@ int handleSync(int client, CBMessage *msg) {
 
     return 1;
 }
-
+//handle copy request
 int handleCopy(int client, CBMessage *msg) {
     size_t count;
     void *data_buffer;
@@ -386,7 +387,7 @@ int handlePaste(int client, CBMessage *msg) {
 
     return 1;
 }
-
+//handle wait request
 int handleWait(int client, CBMessage *msg)
 {
     packed_message response;
@@ -447,7 +448,7 @@ int handleWait(int client, CBMessage *msg)
 
     return 1;
 }
-
+//when the program arguments are invalid show this message
 void usage() {
     printf("Usage: \n");
     printf("\t Single Mode: clipboard \n");
@@ -455,7 +456,7 @@ void usage() {
     printf("\t \t ip: ipv4 dot format \n");
     printf("\t \t port: integer \n");
 }
-
+//Thread that handles all lower communication copy from parent to all children
 void *thread_lower_com(void *arg) {
     int l_region;
     int bytes;
@@ -476,7 +477,7 @@ void *thread_lower_com(void *arg) {
         pthread_mutex_unlock(&mutex2);
     }
 }
-
+//thread that handle alls comumunication with the father children->parent
 void *thread_upper_com(void *arg) {
     int l_region;
     int bytes;
@@ -500,7 +501,7 @@ void *thread_upper_com(void *arg) {
         pthread_mutex_unlock(&mutex);
     }
 }
-
+//Handles the request by type
 void requestHandler(CBMessage *msg, int client)
 {
     int status = 0;
@@ -551,7 +552,7 @@ void requestHandler(CBMessage *msg, int client)
 
 
 }
-
+//Thread that handles all types of network communication app-clipboard/parent-children/clipboard-clipboard
 void *thread_client(void *arg) {
     thread_arg *args = (thread_arg *)arg;
     int client = args->client;
@@ -605,7 +606,7 @@ void *thread_client(void *arg) {
 
 
 
-
+//Thread that waits and accepts internet clients (clipboards)
 void *thread_inet_handler(void * arg) {
         unsigned int addr_size = sizeof(client_addr);
         int parent;
@@ -648,7 +649,7 @@ void *thread_inet_handler(void * arg) {
 
     return 0;
 }
-
+//Function that configures sockets for unix domains communication
 void configure_unix_com() {
     clipboard_addr.sun_family = AF_UNIX; 
     strcpy(clipboard_addr.sun_path, CLIPBOARD_SOCKET);
@@ -674,7 +675,7 @@ void configure_unix_com() {
         exit(-1);
     }
 }
-
+//Function that configures sockets for the clipboard to accept remote connections
 void configure_inet_local_com() {
     int local_port;
     if (uport == 0) {
@@ -704,7 +705,7 @@ void configure_inet_local_com() {
 
     printf("Port:%d\n", local_port);
 }
-
+//Configure internet domain sockets
 void configure_inet_remote_com() {
     socket_fd_inet_remote = socket(AF_INET,SOCK_STREAM,0);
     socket_fd_inet_child = socket(AF_INET, SOCK_STREAM, 0);
