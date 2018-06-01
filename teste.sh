@@ -1,8 +1,10 @@
 #!/bin/bash
 make clean
 make
-cp clipboard ./1/clipboard
-cp clipboard ./2/clipboard
+mkdir ./parent
+mkdir ./child
+cp clipboard ./parent/clipboard
+cp clipboard ./child/clipboard
 cp clipboard ./3/clipboard
 cp clipboard ./4/clipboard
 cp clipboard ./5/clipboard

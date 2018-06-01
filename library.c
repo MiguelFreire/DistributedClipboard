@@ -30,8 +30,8 @@ int clipboard_connect(char *clipboard_dir) {
     }
 
     clipboard_addr.sun_family = AF_UNIX;
-    strcpy(clipboard_addr.sun_path, CLIPBOARD_SOCKET);
-
+    
+    sprintf(clipboard_addr.sun_path, "%sCLIPBOARD_SOCKET", clipboard_dir);
     if (connect(socket_fd, (const struct sockaddr *)&clipboard_addr, sizeof(clipboard_addr)) == -1)
     {
         logs(strerror(errno), L_ERROR);
