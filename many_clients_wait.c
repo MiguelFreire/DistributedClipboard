@@ -37,13 +37,14 @@ int main(int argc, char **argv)
                  exit(-1);
             }
              
-             if (clipboard_wait(client_id, 3, buffer, strlen(buffer) + 1) != 0) {
-                buffer[strlen(buffer)+1] = '\0';
+             if (clipboard_wait(client_id, 3, buffer, 25) != 0) {
+                buffer[strlen(buffer)+1] ='\0';
                 printf("Paste:%s \n", buffer);
             }
              exit(0);
         }
     }
+    sleep(5);
      sprintf(buffer1, "Mensagem cliente %d",i+1);
      int bytes=clipboard_copy(client1_id,3,buffer1, strlen(buffer1)+1);
      printf("bytes %d\n",bytes);
