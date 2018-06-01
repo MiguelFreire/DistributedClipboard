@@ -17,9 +17,8 @@
 int main(int argc, char **argv)
 {
     int i=0;
-    argc=3; // argv[1], the number of clients 
-    region=argv[2]; //region that will be changed
-    for (i=0; i<argv[1]; i++)
+    
+    for (i=0; i<10; i++)
     {
         if(fork()==0)
         {
@@ -27,7 +26,7 @@ int main(int argc, char **argv)
              int client_id = clipboard_connect("./");
              sprintf(buffer, "Mensagem client %d",i);
              int bytes = clipboard_copy(client_id, 3, buffer, strlen(buffer)+1);
-             printf(bytes);
+             printf("bytes %d",bytes);
              exit(0);
         }
     }
