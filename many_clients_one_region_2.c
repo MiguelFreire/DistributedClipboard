@@ -28,10 +28,9 @@ int main(int argc, char **argv)
              sprintf(buffer, "Mensagem client %d",i);
              int bytes = clipboard_copy(client_id, 3, buffer, strlen(buffer)+1);
              printf("bytes %d\n",bytes);
-             getchar();
             if (clipboard_paste(client_id, 3, buffer1, strlen(buffer) + 1) != 0) {
                 buffer1[strlen(buffer)+1] = '\0';
-                printf("%s \n", buffer1);
+                printf("Paste:%s \n", buffer1);
     }
              exit(0);
         }
