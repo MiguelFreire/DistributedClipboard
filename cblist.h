@@ -17,6 +17,7 @@ typedef struct connected_list
 {
     cb_client *cb;
     size_t size;
+    pthread_mutex_t mutex;
 } connected_list;
 
 connected_list *new_list();

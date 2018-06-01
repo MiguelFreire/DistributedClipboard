@@ -66,11 +66,11 @@ connected_list *cblist;
 connected_list *applist;
 pthread_rwlock_t rwlocks[NUM_REGIONS];
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t upper_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t upper_cond = PTHREAD_COND_INITIALIZER;
 
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond2 = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t lower_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t lower_cond = PTHREAD_COND_INITIALIZER;
 
 pthread_mutex_t wait_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
@@ -86,13 +86,27 @@ int uport = 0;
 */
 
 void terminate_handler(int signum) {
-	// Closes the sockets
-	close(socket_fd_inet_local);
-	close(socket_fd_inet_remote);
-	close(socket_fd_unix);
+    
+    if(connected_mode) {
+        pthread_cancel(thread_upper_com_handler);
+        pthread_cancel(thread_child);
+    }
+    close(socket_fd_inet_local);
+    close(socket_fd_inet_remote);  
     close(socket_fd_inet_child);
-	unlink(CLIPBOARD_SOCKET);
-	exit(0);
+
+    if(cblist->size > 0) {
+        free_list(cblist);
+    }
+
+    for(int i = 0; i < NUM_REGIONS; i++) {
+        if(store[i].size > 0) free(store[i].data);
+        pthread_rwlock_destroy(&rwlocks[i]); 
+    }
+    // printf("OLA\n");
+    unlink(CLIPBOARD_SOCKET);
+    
+    exit(0);
 }
 
 /*
@@ -109,6 +123,8 @@ packed_message new_sync_message()
     size_t packed_size;
     void* buffer;
     packed_message package = {NULL, 0};
+    store_object *replica;
+    replica = scalloc(NUM_REGIONS, sizeof(store_object));
 
     msg.type = Request;
     msg.method = Sync;
@@ -119,9 +135,13 @@ packed_message new_sync_message()
         msg.n_data++;
         if(store[i].size > 0) {
             pthread_rwlock_rdlock(&rwlocks[i]);
-            msg.data[i].data = store[i].data;
-            msg.data[i].len = store[i].size;
+            replica[i].size = store[i].size;
+            replica[i].data = smalloc(sizeof(replica[i].size));
+            memcpy(replica[i].data, store[i].data, replica[i].size);
             pthread_rwlock_unlock(&rwlocks[i]);
+            
+            msg.data[i].data = replica[i].data;
+            msg.data[i].len = replica[i].size;
         }
     }
 
@@ -133,6 +153,10 @@ packed_message new_sync_message()
     package.buf = buffer;
     package.size = packed_size;
     
+    for(int i = 0; i < NUM_REGIONS; i++) {
+        if(replica[i].data != NULL) free(replica[i].data);
+    }
+    free(replica);
     free(msg.data);
 
     return package;
@@ -532,18 +556,20 @@ void *thread_lower_com(void *arg) {
     cb_client *cb;
     logs("Lower Com Thread launched", L_INFO);
     while(1) {
-        pthread_mutex_lock(&mutex2);
-        pthread_cond_wait(&cond2, &mutex2);
+        pthread_mutex_lock(&lower_mutex);
+        pthread_cond_wait(&lower_cond, &lower_mutex);
         l_region = last_region;
         pthread_rwlock_rdlock(&rwlocks[l_region]);
+        pthread_mutex_lock(&(cblist->mutex));
         cb = cblist->cb;
         
         while(cb != NULL) {
             bytes = clipboard_lower_copy(cb->socket_teste, l_region, store[l_region].data, store[l_region].size);
             cb = cb->next;
         }
+        pthread_mutex_unlock(&(cblist->mutex));
         pthread_rwlock_unlock(&rwlocks[l_region]);
-        pthread_mutex_unlock(&mutex2);
+        pthread_mutex_unlock(&lower_mutex);
     }
 }
 /*
@@ -558,8 +584,8 @@ void *thread_upper_com(void *arg) {
     int bytes;
     logs("Thread Upper com handler started!",L_INFO);
     while(1) {
-        pthread_mutex_lock(&mutex);
-        pthread_cond_wait(&cond, &mutex);
+        pthread_mutex_lock(&upper_mutex);
+        pthread_cond_wait(&upper_cond, &upper_mutex);
         l_region = last_region;
         pthread_rwlock_rdlock(&rwlocks[l_region]);
         
@@ -568,12 +594,12 @@ void *thread_upper_com(void *arg) {
         if(bytes == -1 || !bytes) {
             connected_mode = 0;
             pthread_rwlock_unlock(&rwlocks[l_region]);
-            pthread_mutex_unlock(&mutex);
+            pthread_mutex_unlock(&upper_mutex);
             pthread_exit(NULL);
         } 
 
         pthread_rwlock_unlock(&rwlocks[l_region]);
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&upper_mutex);
     }
 }
 /*
@@ -602,16 +628,16 @@ void requestHandler(CBMessage *msg, int client)
         if (connected_mode && status && !msg->lower_copy)
         {
             logs("Sending copy call to parent", L_INFO);
-            pthread_mutex_lock(&mutex);
-            pthread_cond_signal(&cond);
-            pthread_mutex_unlock(&mutex);
+            pthread_mutex_lock(&upper_mutex);
+            pthread_cond_signal(&upper_cond);
+            pthread_mutex_unlock(&upper_mutex);
         }
         else if ((!connected_mode || msg->lower_copy) && (cblist->size > 0) && status)
         {
             logs("Sending copy call to children", L_INFO);
-            pthread_mutex_lock(&mutex2);
-            pthread_cond_signal(&cond2);
-            pthread_mutex_unlock(&mutex2);
+            pthread_mutex_lock(&lower_mutex);
+            pthread_cond_signal(&lower_cond);
+            pthread_mutex_unlock(&lower_mutex);
         }
         break;
     case Paste:
@@ -712,21 +738,24 @@ void *thread_inet_handler(void * arg) {
             
             parent = accept(socket_fd_inet_local, (struct sockaddr *) &client_addr, &addr_size);
             if(parent == -1) {
+                printf("AQUI!\n");
                 logs(strerror(errno), L_ERROR);
-                exit(-1);
+                pthread_exit(NULL);
             }
             child = accept(socket_fd_inet_local, (struct sockaddr *)&client_addr, &addr_size);
             if(child == -1) {
+                printf("AQUI!2\n");
                 logs(strerror(errno), L_ERROR);
-                exit(-1);
+                pthread_exit(NULL);
             }
             
             rcb = new_clipboard(parent, child);
             add_clipboard(cblist, rcb);
             
             if(parent == -1) {
+                printf("AQUI!3\n");
                 logs(strerror(errno), L_ERROR);
-                exit(-1);
+                pthread_exit(NULL);
             }
 
             thread_arg args;
@@ -734,8 +763,9 @@ void *thread_inet_handler(void * arg) {
             args.type = Clipboard;
 
             if(pthread_create(&rcb->thread_id, NULL, thread_client, &args) != 0) {
+                printf("AQUI4!\n");
                 logs(strerror(errno), L_ERROR);
-                exit(-1);
+                pthread_exit(NULL);
             }
             
         }
@@ -944,7 +974,6 @@ int main(int argc, char **argv) {
         
         if(client == -1) {
             logs(strerror(errno), L_ERROR);
-            exit(-1);
         }
         app = new_clipboard(client,0);
         add_clipboard(applist, app);
