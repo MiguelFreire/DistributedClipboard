@@ -1,13 +1,15 @@
 CC = gcc
 CFLAGS = -Wall -g
 
-all: clipboard many_clients_one_region many_clients_one_region_2
+all: clipboard many_clients_one_region many_clients_one_region_2 one_clipboard_to_many
 clipboard: clipboard.o clipboard_com.o clipboard_protocol.o clipboard_handler.o clipboard_core.o clipboard_threads.o library.o cblist.o utils.o cbmessage.pb-c.o
 			$(CC) $(CFLAGS) -o clipboard clipboard.o clipboard_com.o clipboard_protocol.o clipboard_handler.o clipboard_core.o clipboard_threads.o library.o cblist.o utils.o cbmessage.pb-c.o -lprotobuf-c -lpthread
 many_clients_one_region: many_clients_one_region.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o 
 			$(CC) $(CFLAGS) -o many_clients_one_region many_clients_one_region.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o -lprotobuf-c
 many_clients_one_region_2: many_clients_one_region_2.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o 
 			$(CC) $(CFLAGS) -o many_clients_one_region_2 many_clients_one_region_2.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o -lprotobuf-c
+one_clipboard_to_many: one_clipboard_to_many.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o 
+			$(CC) $(CFLAGS) -o one_clipboard_to_many one_clipboard_to_many.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o -lprotobuf-c
 clipboard.o: clipboard.c clipboard.h clipboard_threads.h cblist.h
 			$(CC) $(CFLAGS) -c clipboard.c
 clipboard_threads.o: clipboard_threads.c clipboard_threads.h
@@ -26,6 +28,8 @@ many_clients_one_clipboard.o: many_clients_one_region.c clipboard.h utils.h
 			$(CC) $(CFLAGS) -c many_clients_one_region.c 
 many_clients_one_region_2.o: many_clients_one_region_2.c clipboard.h utils.h
 			$(CC) $(CFLAGS) -c many_clients_one_region_2.c 
+one_clipboard_to_many.o: one_clipboard_to_many.c clipboard.h utils.h
+			$(CC) $(CFLAGS) -c one_clipboard_to_many.c
 utils.o:  utils.c utils.h
 			$(CC) $(CFLAGS) -c utils.c
 cbmessage.pb-c.o: cbmessage.pb-c.c cbmessage.pb-c.h
