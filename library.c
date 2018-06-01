@@ -11,54 +11,12 @@
 #include <errno.h>
 #include <stdbool.h>
 #include "clipboard.h"
+#include "clipboard_protocol.h"
 #include "utils.h"
 #include "cbmessage.pb-c.h"
 
-bool validate_region(int region) {
-    return (region > 0 || region < NUM_REGIONS);
-}
+
 //creates a well defined message for network communication
-packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status, bool has_lower_copy, bool lower_copy)  {
-    CBMessage msg = CBMESSAGE__INIT;
-
-    size_t packed_size;
-    void* buffer;
-    packed_message package = {NULL, 0};
-
-    msg.type = type;
-    msg.method = method;
-    msg.region = region;
-    if(data != NULL) {
-        msg.n_data = 1;
-        msg.data = smalloc(sizeof(ProtobufCBinaryData));
-        msg.data->data = data;
-        msg.data->len = count;
-    }
-
-    if(count != 0) {
-        msg.has_size = 1;
-        msg.size = count;
-    }
-    if(has_lower_copy) {
-        msg.has_lower_copy = true;
-        msg.lower_copy = true;
-    }
-    if(has_status) {
-        msg.has_status = 1;
-        msg.status = status;
-    }
-    packed_size = cbmessage__get_packed_size(&msg);
-   
-    buffer = smalloc(packed_size);
-    cbmessage__pack(&msg, buffer);
-
-    package.buf = buffer;
-    package.size = packed_size;
-    free(msg.data);
-
-    return package;
-}
-
 
 int clipboard_connect(char *clipboard_dir) {
     struct sockaddr_un clipboard_addr;
@@ -84,7 +42,8 @@ int clipboard_connect(char *clipboard_dir) {
 }
 
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
-    if(!validate_region(region) || count <= 0 || buf == NULL) return 0;
+    if (!(region > 0 || region < NUM_REGIONS) || count <= 0 || buf == NULL)
+        return 0;
 
     CBMessage *msg;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
@@ -135,66 +94,9 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 
 }
 
-int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count)
-{
-    if (!validate_region(region) || count <= 0 || buf == NULL)
-        return 0;
-    printf("LOWER COPY!!!!!!!\n");
-    CBMessage *msg;
-    uint8_t response_buffer[MESSAGE_MAX_SIZE];
-    int bytes = 0;
-
-    packed_message request = new_message(Request, Copy, region, buf, count, 0, 0, 1, 1);
-    packed_message request_with_size = new_message(Request, Copy, region, NULL, request.size, 0, 0, 1, 1);
-
-    printf("Sending %d bytes\n", request_with_size.size);
-    //Send Request to server
-    bytes = write(clipboard_id, request_with_size.buf, request_with_size.size);
-    printf("LALLA\n");
-    if (bytes == -1 || !bytes)
-    {
-        if(bytes == -1) logs(strerror(errno), L_ERROR);
-        free(request.buf);
-        free(request_with_size.buf);
-        return 0;
-    }
-    //Receive response
-    bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
-    if (bytes == -1 || !bytes)
-    {
-        if(bytes == -1) logs(strerror(errno), L_ERROR);
-        free(request.buf);
-        free(request_with_size.buf);
-        return 0;
-    }
-    printf("After read\n");
-    msg = cbmessage__unpack(NULL, bytes, response_buffer);
-    printf("After read2\n");
-
-    if (msg->has_status && msg->status)
-    {
-        bytes = write(clipboard_id, request.buf, request.size);
-        if (bytes == -1 || !bytes)
-        {
-            if(bytes == -1) logs(strerror(errno), L_ERROR);
-            free(request.buf);
-            free(request_with_size.buf);
-            return 0;
-        }
-    }
-    printf("After read3\n");
-
-    cbmessage__free_unpacked(msg, NULL);
-
-    free(request.buf);
-    free(request_with_size.buf);
-    printf("After read4\n");
-
-    return bytes;
-}
-
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
-    if (!validate_region(region) || count == 0 || buf == NULL) return 0;
+    if (!(region > 0 || region < NUM_REGIONS) || count == 0 || buf == NULL)
+        return 0;
 
     CBMessage *msg;
     int bytes = 0;
@@ -293,7 +195,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
  * return: (int) number of bytes paste
  */
 int clipboard_wait(int clipboard_id, int region, void* buf, size_t count) {
-    if (!validate_region(region) || count == 0 || buf == NULL)
+    if (!(region > 0 || region < NUM_REGIONS) || count == 0 || buf == NULL)
         return 0;
 
     CBMessage *msg;

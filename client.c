@@ -13,6 +13,8 @@
 #include "clipboard.h"
 #include "utils.h"
 
+#define MESSAGE_MAX_SIZE 1024
+
 int main(int argc, char **argv)
 {
 
@@ -34,7 +36,7 @@ int main(int argc, char **argv)
 
     getchar();
 
-    if (clipboard_wait(clipboard_id, 3, buffer3, strlen(buffer2) + 1) != 0) {
+    if (clipboard_paste(clipboard_id, 3, buffer3, strlen(buffer2) + 1) != 0) {
         buffer3[9] = '\0';
         printf("%s \n", buffer3);
     }
