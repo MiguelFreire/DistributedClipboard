@@ -5,11 +5,9 @@ client
 clipboard
 cmake-build-debug/CMakeFiles/clion-log.txt
 .vscode
-2/client2
-
-4/client2
-
-client2
-
-client2
+todo
 many_clients_one_region
+one_clipboard_to_many
+many_clients_wait
+many_clients_one_region_2
+

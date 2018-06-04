@@ -59,7 +59,6 @@ pthread_mutex_t wait_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
 
 int last_region = -1;
-int uport = 0;
 
 /*
 @Name: terminate_handler()
@@ -67,7 +66,6 @@ int uport = 0;
 @Desc: Handles ctrl+c
 @Return: void
 */
-
 void terminate_handler(int signum) {
     
     if(connected_mode) {
@@ -86,7 +84,17 @@ void terminate_handler(int signum) {
         if(store[i].size > 0) free(store[i].data);
         pthread_rwlock_destroy(&rwlocks[i]); 
     }
-    // printf("OLA\n");
+
+    free(store);
+    pthread_mutex_destroy(&upper_mutex);
+    pthread_cond_destroy(&upper_cond);
+
+    pthread_mutex_destroy(&lower_mutex);
+    pthread_cond_destroy(&lower_cond);
+
+    pthread_mutex_destroy(&wait_mutex);
+    pthread_cond_destroy(&wait_cond);
+
     unlink(CLIPBOARD_SOCKET);
     
     exit(0);
@@ -98,15 +106,6 @@ void terminate_handler(int signum) {
 @Desc: Shows a messsage if the program arguments are invalid;
 @Return: (void);
 */
-
-void usage() {
-    printf("Usage: \n");
-    printf("\t Single Mode: clipboard \n");
-    printf("\t Connected Mode: clipboard -c <ip> <port> \n");
-    printf("\t \t ip: ipv4 dot format \n");
-    printf("\t \t port: integer \n");
-}
-
 
 int main(int argc, char **argv) {
     struct sigaction intHandler;
@@ -133,16 +132,12 @@ int main(int argc, char **argv) {
     }
 
     /*Handle Arguments / Program Options*/
-    while((c=getopt(argc, argv, "c:p:")) != -1) {
+    while((c=getopt(argc, argv, "c:")) != -1) {
         switch(c) {
             case 'c':
                 remote_ip = optarg;
                 remote_port = atoi(argv[optind]); //add arguments checker
                 connected_mode = true;
-                break;
-            case 'p':
-                uport = atoi(optarg);
-                logs("PORT FORCED BY USER", L_INFO);
                 break;
             default:
                 logs("No arguments given, launching just in single mode...", L_INFO);

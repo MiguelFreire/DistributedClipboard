@@ -1,6 +1,19 @@
 #include "clipboard_protocol.h"
-
-packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status, bool has_lower_copy, bool lower_copy)
+/*
+@Name: new_message()
+@Args: (message_type) type - message type (Request/Response)
+       (message_method) method - message method (Copy/Paste/Wait/Sync)
+       (size_t) region - region number
+       (void*) data - pointer of data to appende into the message
+       (size_t) count - size of message/size of data
+       (bool) has_status - flag for status
+       (bool) status - status (1 - OK) (0-ERROR)
+       (bool) has_lower_copy - flag for lower_copy
+       (bool) lower_copy - bool to force lower_copy
+@Desc: Creates a suited message for network communication
+@Return: (packaged_message) return an object suited for sending over the network
+*/
+packed_message new_message(message_type type, message_method method, size_t region, void *data, size_t count, bool has_status, bool status, bool has_lower_copy, bool lower_copy)
 {
     CBMessage msg = CBMESSAGE__INIT;
 

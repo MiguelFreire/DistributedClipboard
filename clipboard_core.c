@@ -3,22 +3,21 @@
 extern store_object *store;
 extern pthread_rwlock_t rwlocks[NUM_REGIONS];
 
-int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count)
-{
+int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count) {
     if (!(region > 0 || region < NUM_REGIONS) || count <= 0 || buf == NULL)
         return 0;
-    printf("LOWER COPY!!!!!!!\n");
-    CBMessage *msg;
+
+    CBMessage *msg, *conf_msg;
     uint8_t response_buffer[MESSAGE_MAX_SIZE];
     int bytes = 0;
 
     packed_message request = new_message(Request, Copy, region, buf, count, 0, 0, 1, 1);
     packed_message request_with_size = new_message(Request, Copy, region, NULL, request.size, 0, 0, 1, 1);
 
-    printf("Sending %d bytes\n", request_with_size.size);
+    
     //Send Request to server
     bytes = write(clipboard_id, request_with_size.buf, request_with_size.size);
-    printf("LALLA\n");
+    
     if (bytes == -1 || !bytes)
     {
         if (bytes == -1)
@@ -37,9 +36,9 @@ int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count)
         free(request_with_size.buf);
         return 0;
     }
-    printf("After read\n");
+    
     msg = cbmessage__unpack(NULL, bytes, response_buffer);
-    printf("After read2\n");
+    
 
     if (msg->has_status && msg->status)
     {
@@ -52,14 +51,28 @@ int clipboard_lower_copy(int clipboard_id, int region, void *buf, size_t count)
             free(request_with_size.buf);
             return 0;
         }
+        bzero(response_buffer, MESSAGE_MAX_SIZE);
+
+        bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
+        if (bytes == -1 || !bytes)
+        {
+            free(request.buf);
+            free(request_with_size.buf);
+            return 0;
+        }
+
+        conf_msg = cbmessage__unpack(NULL, bytes, response_buffer);
+
+        bytes = conf_msg->size;
+        cbmessage__free_unpacked(conf_msg, NULL);
     }
-    printf("After read3\n");
+    
 
     cbmessage__free_unpacked(msg, NULL);
 
     free(request.buf);
     free(request_with_size.buf);
-    printf("After read4\n");
+    
 
     return bytes;
 }
@@ -130,13 +143,12 @@ packed_message new_sync_message()
 @Return: (int) 1 if the data has been saved correctly;
               -1 if something went wrong;
 */
-
 int cbstore(size_t region, void *data, size_t count)
 {
     if (!(region > 0 || region < NUM_REGIONS) || data == NULL || store == NULL)
         return -1;
     //We dont need locks here because it's done in init time
-    if (store[region].data != NULL)
+    if (store[region].size > 0)
     {
         free(store[region].data);
         store[region].size = 0;
@@ -220,7 +232,7 @@ int clipboard_sync(int clipboard_id)
     }
 
     msg = cbmessage__unpack(NULL, size, buffer);
-
+    //we dont need lock here its done at init time
     for (int i = 0; i < NUM_REGIONS; i++)
     {
         if (msg->data[i].len > 0)

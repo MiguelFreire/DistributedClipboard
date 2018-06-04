@@ -26,6 +26,6 @@ typedef struct packed_message
     int size;
 } packed_message;
 
-packed_message new_message(message_type type, message_method method, int region, void *data, size_t count, bool has_status, bool status, bool has_lower_copy, bool lower_copy);
+packed_message new_message(message_type type, message_method method, size_t region, void *data, size_t count, bool has_status, bool status, bool has_lower_copy, bool lower_copy);
 
 #endif

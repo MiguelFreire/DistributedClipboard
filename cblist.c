@@ -7,6 +7,7 @@
 #include "cblist.h"
 #include "utils.h"
 
+/*Creates new linked list*/
 connected_list *new_list()
 {
     connected_list *list;
@@ -14,7 +15,7 @@ connected_list *new_list()
     pthread_mutex_init(&(list->mutex), NULL);
     return list;
 }
-
+/*Creates new node for linked list*/
 cb_client *new_clipboard(size_t socket_fd, size_t socket_teste)
 {
     //TODO: validate arguments
@@ -25,7 +26,7 @@ cb_client *new_clipboard(size_t socket_fd, size_t socket_teste)
     cb->socket_teste = socket_teste;
     return cb;
 }
-
+/*Add node to linked list*/
 void add_clipboard(connected_list *list, cb_client *cb)
 {
     cb_client *aux;
@@ -47,7 +48,7 @@ void add_clipboard(connected_list *list, cb_client *cb)
     list->size++;
     pthread_mutex_unlock(&(list->mutex));
 }
-
+/*Remove node from list by thread_id*/
 void remove_clipboard_by_thread_id(connected_list *list, pthread_t thread_id)
 {
     cb_client *aux;
@@ -80,7 +81,7 @@ void remove_clipboard_by_thread_id(connected_list *list, pthread_t thread_id)
     }
     pthread_mutex_unlock(&(list->mutex));
 }
-
+/*Free the list*/
 void free_list(connected_list *list)
 {
     cb_client *aux, *cur;

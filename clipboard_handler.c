@@ -26,7 +26,6 @@ extern bool connected_mode;
 @Desc: Handles the request by type;
 @Return: (void);
 */
-
 void requestHandler(CBMessage *msg, int client)
 {
     int status = 0;
@@ -75,7 +74,14 @@ void requestHandler(CBMessage *msg, int client)
         break;
     }
 }
-
+/*
+@Name: handle_sync()
+@Args: (int) client - id of the client socket;
+       (CBMessage*) msg - pointer to the message recieved;
+@Desc: Handles sync request;
+@Return: (int) 1 if the sync request was handled right;
+               0 if something went wrong;
+*/
 int handle_sync(int client, CBMessage *msg)
 {
     packed_message response;
@@ -132,19 +138,19 @@ int handle_sync(int client, CBMessage *msg)
     return 1;
 }
 /*
-@Name: handleCopy()
+@Name: handle_copy()
 @Args: (int) client - id of the client socket;
        (CBMessage*) msg - pointer to the message recieved;
 @Desc: Handles copy request;
 @Return: (int) 1 if the copy request was handled right;
-               0 if something went wrong with the comunication;
+               0 if something went wrong
 */
-
 int handle_copy(int client, CBMessage *msg)
 {
     size_t count;
     void *data_buffer;
     packed_message response;
+    packed_message response_with_status;
     size_t bytes;
     CBMessage *user_msg;
 
@@ -186,21 +192,34 @@ int handle_copy(int client, CBMessage *msg)
     cbstore(user_msg->region, user_msg->data->data, user_msg->data->len);
     pthread_rwlock_unlock(&rwlocks[user_msg->region]);
 
+    response_with_status = new_message(Response, user_msg->method, user_msg->region, NULL, user_msg->data->len, 
+                                       1,1,0,0);
+    bytes = write(client, response_with_status.buf, response_with_status.size);
+
+    if (bytes == -1 || !bytes)
+    {
+        if (bytes == -1)
+            logs(strerror(errno), L_ERROR);
+        free(response.buf);
+        free(data_buffer);
+        return 0;
+    }
+
     cbmessage__free_unpacked(user_msg, NULL);
     free(response.buf);
     free(data_buffer);
 
     return 1;
 }
+
 /*
-@Name: handlePaste()
+@Name: handle_paste()
 @Args: (int) client - id of the client socket;
        (CBMessage*) msg - pointer to the message recieved;
 @Desc: Handles paste request;
 @Return: (int) 1 if the paste request was handled right;
-               0 if something went wrong with the comunication;
+               0 if something went wrong;
 */
-
 int handle_paste(int client, CBMessage *msg)
 {
     packed_message response;
@@ -210,13 +229,12 @@ int handle_paste(int client, CBMessage *msg)
     CBMessage *user_msg;
 
     int region = msg->region;
-    logs("CHECKING", L_INFO);
 
     /*Read LOCK!*/
     pthread_rwlock_rdlock(&rwlocks[region]);
     if (store[region].data == NULL)
     {
-        logs("Region has no data", L_INFO);
+        logs("Region has no data", L_ERROR);
         //there is no data in that region send negative response
         response = new_message(Response, msg->method, msg->region, NULL, 0, 1, 0, 0, 0);
 
@@ -283,12 +301,12 @@ int handle_paste(int client, CBMessage *msg)
     return 1;
 }
 /*
-@Name: handleWait()
+@Name: handle_wait()
 @Args: (int) client - id of the client socket;
        (CBMessage*) msg - pointer to the message recieved;
 @Desc: Handles wait request;
 @Return: (int) 1 if the wait request was handled right;
-               0 if something went wrong with the comunication;
+               0 if something went wrong
 */
 int handle_wait(int client, CBMessage *msg)
 {

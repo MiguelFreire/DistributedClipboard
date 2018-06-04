@@ -108,7 +108,7 @@ void *thread_client(void *arg)
     uint8_t size_buffer[MESSAGE_MAX_SIZE];
     int bytes = 0;
 
-    logs("Clipboard connected!", L_INFO);
+    logs("New client connected!", L_INFO);
     while (1)
     {
         bzero(size_buffer, MESSAGE_MAX_SIZE);
@@ -172,14 +172,12 @@ void *thread_inet_handler(void *arg)
         parent = accept(socket_fd_inet_local, (struct sockaddr *)&client_addr, &addr_size);
         if (parent == -1)
         {
-            printf("AQUI!\n");
             logs(strerror(errno), L_ERROR);
             pthread_exit(NULL);
         }
         child = accept(socket_fd_inet_local, (struct sockaddr *)&client_addr, &addr_size);
         if (child == -1)
         {
-            printf("AQUI!2\n");
             logs(strerror(errno), L_ERROR);
             pthread_exit(NULL);
         }
@@ -187,20 +185,12 @@ void *thread_inet_handler(void *arg)
         rcb = new_clipboard(parent, child);
         add_clipboard(cblist, rcb);
 
-        if (parent == -1)
-        {
-            printf("AQUI!3\n");
-            logs(strerror(errno), L_ERROR);
-            pthread_exit(NULL);
-        }
-
         thread_arg args;
         args.client = rcb->socket_fd;
         args.type = Clipboard;
 
         if (pthread_create(&rcb->thread_id, NULL, thread_client, &args) != 0)
         {
-            printf("AQUI4!\n");
             logs(strerror(errno), L_ERROR);
             pthread_exit(NULL);
         }

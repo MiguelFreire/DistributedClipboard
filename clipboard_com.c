@@ -16,7 +16,6 @@ extern struct sockaddr_un client_addr;
 extern bool connected_mode;
 extern char *local_ip;
 extern int local_port;
-extern int uport;
 
 /*
 @Name: configure_unix_com()
@@ -65,13 +64,9 @@ void configure_unix_com()
 void configure_inet_local_com()
 {
     int local_port;
-    if (uport == 0)
-    {
-        srand(time(NULL)); //Use time as seeder for now, maybe change for getpid?
-        local_port = rand() % (64738 - 1024) + 1024;
-    }
-    else
-        local_port = uport;
+
+    srand(time(NULL)); //Use time as seeder for now, maybe change for getpid?
+    local_port = rand() % (64738 - 1024) + 1024;
 
     socket_fd_inet_local = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd_inet_local == -1)
