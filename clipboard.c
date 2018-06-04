@@ -3,113 +3,226 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
 #include <arpa/inet.h>
 #include <sys/un.h>
-#include <time.h>
 #include <errno.h>
-
+#include <pthread.h>
 #include "clipboard.h"
-#include "utils.h"
+#include "clipboard_threads.h"
+#include "cblist.h"
 
 
-int handle_request() {
+/*Threads*/
+pthread_t thread_regions[NUM_REGIONS];
+pthread_t thread_unix_com_handler;
+pthread_t thread_inet_com_handler;
+pthread_t thread_upper_com_handler;
+pthread_t thread_lower_com_handler;
+pthread_t thread_child;
+
+/*CLIPBOARD VARIABLES*/
+bool connected_mode;
+char *local_ip;
+int local_port;
+store_object *store;
+/*UNIX_COM VARIABLES */
+
+/*INET_COM VARIABLES*/
+char *remote_ip; //remote ip
+int remote_port;  //remote port
+
+int socket_fd_inet_local; //socket for inet com
+int socket_fd_inet_remote;
+int socket_fd_unix;
+int socket_fd_inet_child;
+
+struct sockaddr_in local_addr; 
+struct sockaddr_in remote_addr; 
+struct sockaddr_un clipboard_addr;
+struct sockaddr_un client_addr;
+
+connected_list *cblist;
+connected_list *applist;
+pthread_rwlock_t rwlocks[NUM_REGIONS];
+
+pthread_mutex_t upper_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t upper_cond = PTHREAD_COND_INITIALIZER;
+
+pthread_mutex_t lower_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t lower_cond = PTHREAD_COND_INITIALIZER;
+
+pthread_mutex_t wait_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
+
+int last_region = -1;
+
+/*
+@Name: terminate_handler()
+@Arg: (int) signum - signal id
+@Desc: Handles ctrl+c
+@Return: void
+*/
+void terminate_handler(int signum) {
     
+    if(connected_mode) {
+        pthread_cancel(thread_upper_com_handler);
+        pthread_cancel(thread_child);
+    }
+    close(socket_fd_inet_local);
+    close(socket_fd_inet_remote);  
+    close(socket_fd_inet_child);
+
+    if(cblist->size > 0) {
+        free_list(cblist);
+    }
+
+    for(int i = 0; i < NUM_REGIONS; i++) {
+        if(store[i].size > 0) free(store[i].data);
+        pthread_rwlock_destroy(&rwlocks[i]); 
+    }
+
+    free(store);
+    pthread_mutex_destroy(&upper_mutex);
+    pthread_cond_destroy(&upper_cond);
+
+    pthread_mutex_destroy(&lower_mutex);
+    pthread_cond_destroy(&lower_cond);
+
+    pthread_mutex_destroy(&wait_mutex);
+    pthread_cond_destroy(&wait_cond);
+
+    unlink(CLIPBOARD_SOCKET);
+    
+    exit(0);
 }
 
-void usage() {
-    printf("Usage: \n");
-    printf("\t Single Mode: clipboard \n");
-    printf("\t Connected Mode: clipboard -c <ip> <port> \n");
-    printf("\t \t ip: ipv4 dot format \n");
-    printf("\t \t port: integer \n");
-}
+/*
+@Name: usage()
+@Args: None;
+@Desc: Shows a messsage if the program arguments are invalid;
+@Return: (void);
+*/
 
 int main(int argc, char **argv) {
+    struct sigaction intHandler;
 
-    char store[10][MESSAGE_MAX_SIZE]; //create store 
+    intHandler.sa_handler = &terminate_handler;
+    sigaction(SIGINT, &intHandler, NULL);
+    /*Program Vars*/
+    int c; //var for opt
+    logs("Store created", L_INFO);
+    //TODO: create new store function
+    store = scalloc(NUM_REGIONS, sizeof(store_object)); 
+    cblist = new_list();
+    applist = new_list();
 
-    if(argc == 1) {//single mode
-        logs("Starting in single mode.", L_INFO);
-        logs("Creating local clipboard", L_INFO);
+    thread_arg child_args;
+    thread_arg app_args;
 
-        //Create address for local clipboard
-        struct sockaddr_un clipboard_addr;
-        struct sockaddr_un client_addr;
-
-        clipboard_addr.sun_family = AF_UNIX; 
-        strcpy(clipboard_addr.sun_path, CLIPBOARD_SOCKET);
-        
-        //Create socket for local clipboard communication (UNIX DATASTREAM)
-        unlink(CLIPBOARD_SOCKET);
-        int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-
-        if(socket_fd == -1) {
-            logs(strerror(errno), L_ERROR);
-            exit(-1);
-        } 
-
-        //Bind socket to address
-
-        if(bind(socket_fd, (struct sockaddr *) &clipboard_addr, sizeof(clipboard_addr)) == -1) {
+    logs("Creating read-write locks...", L_INFO);
+    for(int j = 0; j < NUM_REGIONS; j++) {
+        if(pthread_rwlock_init(&rwlocks[j], NULL) != 0) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
+    }
 
-        if(listen(socket_fd,1) == -1) {
+    /*Handle Arguments / Program Options*/
+    while((c=getopt(argc, argv, "c:")) != -1) {
+        switch(c) {
+            case 'c':
+                remote_ip = optarg;
+                remote_port = atoi(argv[optind]); //add arguments checker
+                connected_mode = true;
+                break;
+            default:
+                logs("No arguments given, launching just in single mode...", L_INFO);
+                break;
+        }   
+    }
+    /*Configure UNIX Socket Connection */
+    configure_unix_com();
+    logs("UNIX Sockets set!", L_INFO);
+    /*Configure INET Socket Connection */
+    configure_inet_local_com();
+    logs("INET Sockets set!", L_INFO);
+    if(connected_mode) {
+        /*Connect to remote clipboard*/
+        configure_inet_remote_com();
+        clipboard_sync(socket_fd_inet_remote);
+        logs("Sync done!", L_INFO);
+        
+        //Create communication thread for parent
+        if(pthread_create(&thread_upper_com_handler, NULL, thread_upper_com, NULL) != 0) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
         }
+        //Create communication thread for children
+        child_args.client = socket_fd_inet_child;
+        child_args.type = Parent;
 
-
-        logs("Local server started!", L_INFO); 
-
-        
-        
-        char buffer[MESSAGE_MAX_SIZE];
-        clipboard_message msg;
-        int message_size = 0;
-        int client;
-        int addr_size = sizeof(client_addr);
-
-
-        while(1) {
-            logs("Waiting for clients...", L_INFO);
-            int client = accept(socket_fd, (struct sockaddr *) &client_addr, &addr_size);
-            if (client == -1)
-            {
-                logs(strerror(errno), L_ERROR);
-                exit(-1);
-            }
-            if(fork() == 0) {
-                char bf[100];
-                sprintf(bf, "Client %d connected", client);
-                logs((char *)bf, L_INFO);
-                read(client, &msg, sizeof(clipboard_message));
-                printf("Message received! - %s", msg.data);
-                write(client, &msg, sizeof(msg));
-            }
-
-        }
-        
-        unlink(CLIPBOARD_SOCKET);
-        close(socket_fd);
-        
-        exit(0);
-    } if(argc > 3 && argv[1][0] == '-' && argv[1][1] == 'c') {
-        struct in_addr server_addr;
-
-        if(inet_aton(argv[2], &server_addr) == 0) {
-            logs("Invalid IP Address", L_ERROR);
-            usage();
+        if(pthread_create(&thread_child, NULL, thread_client, &child_args) != 0) {
+            logs(strerror(errno), L_ERROR);
             exit(-1);
         }
+    }
 
-        int port = atoi(argv[3]);
+    if(pthread_create(&thread_lower_com_handler, NULL, thread_lower_com, NULL) != 0) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    }
+    //free it in the end!
 
+    //single mode
+    logs("Starting in single mode.", L_INFO);
+    logs("Creating local clipboard", L_INFO);
+    //UNIX SOCKET CONNECTION
+    //Create address for local clipboard
+    
+
+    //END UNIX SOCKET CONNECTION
+    logs("Local server started!", L_INFO); 
+
+    
+    unsigned int addr_size = sizeof(client_addr);
+    int client;        
+    cb_client *app;
+    
+    
+    if(pthread_create(&thread_inet_com_handler, NULL, thread_inet_handler, NULL) != 0) {
+        logs(strerror(errno), L_ERROR);
+        exit(-1);
+    }
+
+    while(1) {
+        logs("Waiting for local clients...", L_INFO);
+        client = accept(socket_fd_unix, (struct sockaddr *) &client_addr, &addr_size);
+        
+        if(client == -1) {
+            logs(strerror(errno), L_ERROR);
+        }
+        app = new_clipboard(client,0);
+        add_clipboard(applist, app);
+        
+        
+        app_args.client = app->socket_fd;
+        app_args.type = App;
+
+        if(pthread_create(&app->thread_id, NULL, thread_client, &app_args) != 0) {
+            logs(strerror(errno), L_ERROR);
+            exit(-1);
+        }
 
     }
+    //TODO: free store and free cblist
+    unlink(CLIPBOARD_SOCKET);
+    close(socket_fd_unix);
+    
+    
         
     return 0;
 }

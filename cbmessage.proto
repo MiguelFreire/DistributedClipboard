@@ -1,0 +1,23 @@
+message CBMessage {
+
+    enum Type {
+        Request = 0;
+        Response = 1;
+    }
+
+    enum Method {
+        Copy = 0;
+        Paste = 1;
+        Sync = 2;
+        Wait = 3;
+    }
+
+    required Type type = 1;
+    required Method method = 2;
+    required uint32 region = 3;
+    repeated bytes data = 4;
+    optional uint32 size = 5;
+    optional bool status = 6;
+    optional bool lower_copy = 7;
+
+}

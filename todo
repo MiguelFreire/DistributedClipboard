@@ -1,0 +1,73 @@
+#TODO
+Primarios:
+✔ Memoria Dinamica @done(18-05-14 03:15)
+☐ SOCKETS INET @started(18-05-14 03:16)
+    ✔ Lista de nós @done(18-05-14 16:10)
+    ✔ Propagação das alterações @done(18-05-18 15:18)
+✔ Threading @done(18-05-14 16:06)
+✔ Sincronização com read/write locks @started(18-05-14 12:40) @done(18-05-14 16:06) @lasted(3 hours 26 minutes 56 seconds)
+✔ Criar lista de clientes com thread_id @done(18-05-14 16:07)
+✔ List upper e down clients @done(18-05-18 15:18)
+✔ Fazer a função wait com váriaveis condicionais @done(18-05-21 15:42)
+✔ Validar todos os argumentos @done(18-05-21 15:42)
+☐ Error handling nas funções
+☐ Converter bits host to network/network to host - 
+☐ Clipboard Destroy e RWLock Destroy
+✔ SegFault quando ip é invalido @done(18-05-21 16:17)
+Secundarios:
+☐ Signal Ctrl-C Handler 
+✘ Trocar strcpy por strncpy @cancelled(18-05-14 03:16)
+✔ Trocar store passada por referencia por shared var @done(18-05-14 03:16)
+☐ Criar ambiente no docker
+☐ Criar Stress Tests
+☐ Fechar sockets
+☐ Adicionar lock no sync 
+
+Optimizações:
+☐ Se a data a dar copy for igual retornar logo - hash
+
+
+Projects:
+  ☐ Anything with a colon at the end of the line is a project title
+  ☐ You can nest projects inside each other
+  Nested:
+    ☐ You can fold projects
+
+Todos:
+  You can write plain text as notes or descriptions wherever you want
+  To do:
+    ☐ Press Cmd/Ctrl+Enter to add a new todo
+  Doing:
+    ✔ Press Alt+D to mark a todo as done
+    ✔ Press it again to undo the action @done(18-05-14 03:14)
+  Dev:
+    ✘ Press Alt+C to mark a todo as cancelled
+    ✘ Press it again to undo the action
+  Tagging:
+    ☐ You can add tags using the @ sign, like this @tag
+    ☐ There are some special, customizable tags: @critical @high @low @today
+  Timekeeping:
+    ✔ Completed todos can show a timestamp @done(17-11-03 10:42)
+    ☐ Press Alt+S to mark a todo as started @started(17-11-03 10:42)
+      ✔ Now it will show the elapsed time @started(17-11-03 10:42) @done(17-11-03 20:11) @lasted(9 hours 29 minutes)
+
+Style:
+  We support a markdown-like syntax for styling text
+  Bold:
+    ☐ Use asterisks for *bold*
+  Italic:
+    ☐ Use underscores for _italic_
+  Strikethrough:
+    ☐ Use tildes for ~strikethrough~
+
+Code:
+  ☐ You can embed custom `code` pretty much anywhere
+  ☐ Even ```
+      multi-line
+      code blocks
+      are supported
+    ```
+
+Archive:
+  ✔ Completed todos will be moved here
+  ✔ Congratulations, you are now a Todo+ master!
