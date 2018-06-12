@@ -12,8 +12,8 @@ extern pthread_cond_t upper_cond;
 extern pthread_mutex_t lower_mutex;
 extern pthread_cond_t lower_cond;
 
-extern pthread_mutex_t wait_mutex;
-extern pthread_cond_t wait_cond;
+extern pthread_mutex_t wait_mutex[NUM_REGIONS];
+extern pthread_cond_t wait_cond[NUM_REGIONS];
 
 extern int last_region;
 extern bool connected_mode;
@@ -36,10 +36,10 @@ void requestHandler(CBMessage *msg, int client)
         status = handle_copy(client, msg);
         status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
 
-        pthread_mutex_lock(&wait_mutex);
+        pthread_mutex_lock(&wait_mutex[msg->region]);
         last_region = msg->region;
-        pthread_cond_broadcast(&wait_cond);
-        pthread_mutex_unlock(&wait_mutex);
+        pthread_cond_broadcast(&wait_cond[msg->region]);
+        pthread_mutex_unlock(&wait_mutex[msg->region]);
 
         if (connected_mode && status && !msg->lower_copy)
         {
@@ -321,15 +321,15 @@ int handle_wait(int client, CBMessage *msg)
     logs("CHECKING", L_INFO);
 
     /*Read LOCK!*/
-    pthread_mutex_lock(&wait_mutex);
-    pthread_cond_wait(&wait_cond, &wait_mutex);
+    pthread_mutex_lock(&wait_mutex[region]);
+    pthread_cond_wait(&wait_cond[region], &wait_mutex[region]);
     pthread_rwlock_rdlock(&rwlocks[region]);
 
     //Create response with data
     response = new_message(Response, msg->method, region, store[region].data, store[region].size, 1, 1, 0, 0);
     /*Read UNLOCK!*/
     pthread_rwlock_unlock(&rwlocks[region]);
-    pthread_mutex_unlock(&wait_mutex);
+    pthread_mutex_unlock(&wait_mutex[region]);
     //Create response with size
     response_with_size = new_message(Response, msg->method, region, NULL, response.size, 0, 0, 0, 0);
 

@@ -14,8 +14,8 @@ extern pthread_cond_t upper_cond;
 extern pthread_mutex_t lower_mutex;
 extern pthread_cond_t lower_cond;
 
-extern pthread_mutex_t wait_mutex;
-extern pthread_cond_t wait_cond;
+extern pthread_mutex_t wait_mutex[NUM_REGIONS];
+extern pthread_cond_t wait_cond[NUM_REGIONS];
 
 extern int socket_fd_inet_remote;
 extern int socket_fd_inet_local;

@@ -55,8 +55,8 @@ pthread_cond_t upper_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lower_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lower_cond = PTHREAD_COND_INITIALIZER;
 
-pthread_mutex_t wait_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t wait_mutex[NUM_REGIONS];
+pthread_cond_t wait_cond[NUM_REGIONS];
 
 int last_region = -1;
 
@@ -83,6 +83,8 @@ void terminate_handler(int signum) {
     for(int i = 0; i < NUM_REGIONS; i++) {
         if(store[i].size > 0) free(store[i].data);
         pthread_rwlock_destroy(&rwlocks[i]); 
+        pthread_mutex_destroy(&wait_mutex[i]);
+        pthread_cond_destroy(&wait_cond[i]);
     }
 
     free(store);
@@ -91,9 +93,6 @@ void terminate_handler(int signum) {
 
     pthread_mutex_destroy(&lower_mutex);
     pthread_cond_destroy(&lower_cond);
-
-    pthread_mutex_destroy(&wait_mutex);
-    pthread_cond_destroy(&wait_cond);
 
     unlink(CLIPBOARD_SOCKET);
     
@@ -125,6 +124,8 @@ int main(int argc, char **argv) {
 
     logs("Creating read-write locks...", L_INFO);
     for(int j = 0; j < NUM_REGIONS; j++) {
+        pthread_mutex_init(&wait_mutex[j], NULL);
+        pthread_cond_init(&wait_cond[j], NULL);
         if(pthread_rwlock_init(&rwlocks[j], NULL) != 0) {
             logs(strerror(errno), L_ERROR);
             exit(-1);
