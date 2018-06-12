@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -g
 
-all: clipboard app1 app2 app3 app4
+all: clipboard app1 app2 app3 app4 app5
 clipboard: clipboard.o clipboard_com.o clipboard_protocol.o clipboard_handler.o clipboard_core.o clipboard_threads.o library.o cblist.o utils.o cbmessage.pb-c.o
 			$(CC) $(CFLAGS) -o clipboard clipboard.o clipboard_com.o clipboard_protocol.o clipboard_handler.o clipboard_core.o clipboard_threads.o library.o cblist.o utils.o cbmessage.pb-c.o -lprotobuf-c -lpthread
 app1: many_clients_one_region.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o 
@@ -12,6 +12,8 @@ app3: many_clients_wait.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.
 			$(CC) $(CFLAGS) -o app3 many_clients_wait.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o -lprotobuf-c
 app4: one_clipboard_to_many.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o 
 			$(CC) $(CFLAGS) -o app4 one_clipboard_to_many.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o -lprotobuf-c
+app5: app5.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o 
+			$(CC) $(CFLAGS) -o app5 app5.o library.o utils.o clipboard_protocol.o cbmessage.pb-c.o -lprotobuf-c
 clipboard.o: clipboard.c clipboard.h clipboard_threads.h cblist.h
 			$(CC) $(CFLAGS) -c clipboard.c
 clipboard_threads.o: clipboard_threads.c clipboard_threads.h
@@ -34,6 +36,8 @@ one_clipboard_to_many.o: one_clipboard_to_many.c clipboard.h utils.h
 			$(CC) $(CFLAGS) -c one_clipboard_to_many.c
 many_clients_wait.o: many_clients_wait.c clipboard.h utils.h
 			$(CC) $(CFLAGS) -c many_clients_wait.c
+app5.o: app5.c clipboard.h utils.h
+			$(CC) $(CFLAGS) -c app5.c
 many_clients_many_regions.o: many_clients_many_regions.c clipboard.h utils.h
 			$(CC) $(CFLAGS) -c many_clients_many_regions.c 
 utils.o:  utils.c utils.h
@@ -49,6 +53,7 @@ clean:
 			rm app2
 			rm app3
 			rm app4
+			rm app5
 proto:
 			protoc --c_out=. cbmessage.proto
 install:

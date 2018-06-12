@@ -106,7 +106,7 @@ packed_message new_sync_message()
         {
             pthread_rwlock_rdlock(&rwlocks[i]);
             replica[i].size = store[i].size;
-            replica[i].data = smalloc(sizeof(replica[i].size));
+            replica[i].data = scalloc(1,replica[i].size);
             memcpy(replica[i].data, store[i].data, replica[i].size);
             pthread_rwlock_unlock(&rwlocks[i]);
 
@@ -154,7 +154,7 @@ int cbstore(size_t region, void *data, size_t count)
         store[region].size = 0;
     }
 
-    store[region].data = smalloc(count);
+    store[region].data = scalloc(1,count);
     memcpy(store[region].data, data, count);
     store[region].size = count;
 
@@ -236,7 +236,7 @@ int clipboard_sync(int clipboard_id)
     for (int i = 0; i < NUM_REGIONS; i++)
     {
         if (msg->data[i].len > 0)
-        {
+        {   
             store[i].data = smalloc(msg->data[i].len);
             memcpy(store[i].data, msg->data[i].data, msg->data[i].len);
             store[i].size = msg->data[i].len;
