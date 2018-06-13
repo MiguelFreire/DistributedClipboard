@@ -9,7 +9,7 @@ typedef struct cb_client
     size_t id;
     pthread_t thread_id;
     size_t socket_fd;
-    size_t socket_teste;
+    size_t socket_fd2;
     struct cb_client *next;
 } cb_client;
 
@@ -21,7 +21,7 @@ typedef struct connected_list
 } connected_list;
 
 connected_list *new_list();
-cb_client *new_clipboard(size_t socket_fd, size_t socket_teste);
+cb_client *new_clipboard(size_t socket_fd, size_t socket_fd2);
 void add_clipboard(connected_list *list, cb_client *cb);
 void remove_clipboard_by_thread_id(connected_list *list, pthread_t thread_id);
 void free_list(connected_list *list);

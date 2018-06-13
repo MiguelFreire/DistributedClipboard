@@ -16,14 +16,14 @@ connected_list *new_list()
     return list;
 }
 /*Creates new node for linked list*/
-cb_client *new_clipboard(size_t socket_fd, size_t socket_teste)
+cb_client *new_clipboard(size_t socket_fd, size_t socket_fd2)
 {
     //TODO: validate arguments
     cb_client *cb;
 
     cb = scalloc(1, sizeof(cb_client));
     cb->socket_fd = socket_fd;
-    cb->socket_teste = socket_teste;
+    cb->socket_fd2 = socket_fd2;
     return cb;
 }
 /*Add node to linked list*/

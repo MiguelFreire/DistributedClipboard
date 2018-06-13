@@ -53,7 +53,7 @@ int clipboard_connect(char *clipboard_dir)
 @Return: (int) returns the number of bytes copied or 0 in case of error
 */
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
-    if (!(region > 0 || region < NUM_REGIONS) || count <= 0 || buf == NULL)
+    if (region < 0 || region >= NUM_REGIONS || count <= 0 || buf == NULL)
         return 0;
 
     CBMessage *msg, *conf_msg;
@@ -102,6 +102,8 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 
         bytes = conf_msg->size;
         cbmessage__free_unpacked(conf_msg, NULL);
+    } else {
+        bytes = 0;
     }
 
     cbmessage__free_unpacked(msg, NULL);
@@ -124,7 +126,7 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 @Return: (int) returns the number of bytes pasted or 0 in case of error
 */
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
-    if (!(region > 0 || region < NUM_REGIONS) || count == 0 || buf == NULL)
+    if (region < 0 || region >= NUM_REGIONS || count <= 0 || buf == NULL)
         return 0;
 
     CBMessage *msg;
@@ -136,25 +138,17 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
     packed_message request = new_message(Request, Paste, region, NULL,0,0,0,0,0);
 
     bytes = write(clipboard_id, request.buf, request.size);
-    if(bytes == 0) {
-        free(request.buf);
-        return 0;
-    }
-    if(bytes == -1) {
+    if (bytes == -1 || !bytes) {
         free(request.buf);
         return 0;
     }
 
     bytes = read(clipboard_id, response_buffer, MESSAGE_MAX_SIZE);
-    if(bytes == 0) {
+    if (bytes == -1 || !bytes) {
         free(request.buf);
         return 0;
     }
-    if(bytes == -1)
-    {
-        free(request.buf);
-        return 0;
-    }
+
     msg = cbmessage__unpack(NULL, bytes, response_buffer);
 
     if(msg->has_status && !msg->status) {
@@ -215,7 +209,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 @Return: (int) returns the number of bytes copied to that region or 0 in case of error
 */
 int clipboard_wait(int clipboard_id, int region, void* buf, size_t count) {
-    if (!(region > 0 || region < NUM_REGIONS) || count == 0 || buf == NULL)
+    if (region < 0 || region >= NUM_REGIONS || count <= 0 || buf == NULL)
         return 0;
 
     CBMessage *msg;

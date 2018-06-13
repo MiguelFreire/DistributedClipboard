@@ -17,6 +17,8 @@ extern pthread_cond_t lower_cond;
 extern pthread_mutex_t wait_mutex[NUM_REGIONS];
 extern pthread_cond_t wait_cond[NUM_REGIONS];
 
+extern pthread_mutex_t region_mutex;
+
 extern int socket_fd_inet_remote;
 extern int socket_fd_inet_local;
 
@@ -35,17 +37,20 @@ void *thread_lower_com(void *arg)
     cb_client *cb;
     logs("Lower Com Thread launched", L_INFO);
     while (1)
-    {
+    {   
         pthread_mutex_lock(&lower_mutex);
         pthread_cond_wait(&lower_cond, &lower_mutex);
+
         l_region = last_region;
+
+        pthread_mutex_unlock(&region_mutex);
         pthread_rwlock_rdlock(&rwlocks[l_region]);
         pthread_mutex_lock(&(cblist->mutex));
         cb = cblist->cb;
 
         while (cb != NULL)
         {
-            bytes = clipboard_lower_copy(cb->socket_teste, l_region, store[l_region].data, store[l_region].size);
+            bytes = clipboard_lower_copy(cb->socket_fd2, l_region, store[l_region].data, store[l_region].size);
             cb = cb->next;
         }
         pthread_mutex_unlock(&(cblist->mutex));
@@ -70,7 +75,10 @@ void *thread_upper_com(void *arg)
     {
         pthread_mutex_lock(&upper_mutex);
         pthread_cond_wait(&upper_cond, &upper_mutex);
+        
         l_region = last_region;
+
+        pthread_mutex_unlock(&region_mutex);
         pthread_rwlock_rdlock(&rwlocks[l_region]);
 
         bytes = clipboard_copy(socket_fd_inet_remote, l_region, store[l_region].data, store[l_region].size);
@@ -104,6 +112,7 @@ void *thread_client(void *arg)
     int client = args->client;
     client_t client_type = args->type;
     CBMessage *msg;
+    packed_message error_msg;
 
     uint8_t size_buffer[MESSAGE_MAX_SIZE];
     int bytes = 0;
@@ -141,6 +150,20 @@ void *thread_client(void *arg)
 
         //Unpacks from proto to c format
         msg = cbmessage__unpack(NULL, bytes, size_buffer);
+        
+        if(msg->region > NUM_REGIONS-1) {
+            
+            error_msg = new_message(Response, msg->method, 0, NULL, 0, 1, 0, 0, 0);
+            bytes = write(client, error_msg.buf, error_msg.size);
+            
+            if(bytes == -1 || bytes == 0) {
+                logs(strerror(errno), L_ERROR);
+            }
+
+            cbmessage__free_unpacked(msg, NULL);
+            free(error_msg.buf);
+            continue;
+        }
 
         requestHandler(msg, client);
         cbmessage__free_unpacked(msg, NULL);

@@ -29,8 +29,9 @@ int main(int argc, char **argv)
             clipboard_copy(client_id, regiao, linha, 100);
         }
         if(comando == 'p') {
+            bzero(linha,100);
             clipboard_paste(client_id, regiao, linha, 100);
-            printf("Linha: %s \n", linha);
+            printf("\n Linha: %s \n", linha);
         }
         if (comando == 'w')
         {

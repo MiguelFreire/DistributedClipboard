@@ -15,6 +15,8 @@ extern pthread_cond_t lower_cond;
 extern pthread_mutex_t wait_mutex[NUM_REGIONS];
 extern pthread_cond_t wait_cond[NUM_REGIONS];
 
+extern pthread_mutex_t region_mutex;
+
 extern int last_region;
 extern bool connected_mode;
 
@@ -29,6 +31,7 @@ extern bool connected_mode;
 void requestHandler(CBMessage *msg, int client)
 {
     int status = 0;
+
     switch (msg->method)
     {
     case Copy:
@@ -36,8 +39,10 @@ void requestHandler(CBMessage *msg, int client)
         status = handle_copy(client, msg);
         status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
 
-        pthread_mutex_lock(&wait_mutex[msg->region]);
+        pthread_mutex_lock(&region_mutex);
         last_region = msg->region;
+
+        pthread_mutex_lock(&wait_mutex[msg->region]);
         pthread_cond_broadcast(&wait_cond[msg->region]);
         pthread_mutex_unlock(&wait_mutex[msg->region]);
 
@@ -54,6 +59,8 @@ void requestHandler(CBMessage *msg, int client)
             pthread_mutex_lock(&lower_mutex);
             pthread_cond_signal(&lower_cond);
             pthread_mutex_unlock(&lower_mutex);
+        } else {
+            pthread_mutex_unlock(&region_mutex);
         }
         break;
     case Paste:
@@ -69,8 +76,10 @@ void requestHandler(CBMessage *msg, int client)
     case Wait:
         logs("Handling wait method...", L_INFO);
         status = handle_wait(client, msg);
-        status ? logs("Wait methond handled successfuly", L_INFO) : logs("Error handling wait method", L_ERROR);
+        status ? logs("Wait method handled successfuly", L_INFO) : logs("Error handling wait method", L_ERROR);
+        break;
     default:
+        logs("Error no method found", L_ERROR);
         break;
     }
 }
@@ -318,7 +327,7 @@ int handle_wait(int client, CBMessage *msg)
 
     int region = msg->region;
 
-    logs("CHECKING", L_INFO);
+    logs("Waiting for change...", L_INFO);
 
     /*Read LOCK!*/
     pthread_mutex_lock(&wait_mutex[region]);

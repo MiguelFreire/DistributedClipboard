@@ -58,6 +58,8 @@ pthread_cond_t lower_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t wait_mutex[NUM_REGIONS];
 pthread_cond_t wait_cond[NUM_REGIONS];
 
+pthread_mutex_t region_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 int last_region = -1;
 
 /*
@@ -94,6 +96,8 @@ void terminate_handler(int signum) {
     pthread_mutex_destroy(&lower_mutex);
     pthread_cond_destroy(&lower_cond);
 
+    pthread_mutex_destroy(&region_mutex);
+    
     unlink(CLIPBOARD_SOCKET);
     
     exit(0);
