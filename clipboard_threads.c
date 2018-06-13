@@ -44,7 +44,6 @@ void *thread_lower_com(void *arg)
         l_region = last_region;
 
         pthread_mutex_unlock(&region_mutex);
-        pthread_rwlock_rdlock(&rwlocks[l_region]);
         pthread_mutex_lock(&(cblist->mutex));
         cb = cblist->cb;
 
@@ -79,7 +78,6 @@ void *thread_upper_com(void *arg)
         l_region = last_region;
 
         pthread_mutex_unlock(&region_mutex);
-        pthread_rwlock_rdlock(&rwlocks[l_region]);
 
         bytes = clipboard_copy(socket_fd_inet_remote, l_region, store[l_region].data, store[l_region].size);
 

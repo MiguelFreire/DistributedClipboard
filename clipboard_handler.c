@@ -39,8 +39,11 @@ void requestHandler(CBMessage *msg, int client)
         status = handle_copy(client, msg);
         status ? logs("Copy method handled successfuly", L_INFO) : logs("Error handlying copy method", L_ERROR);
 
-        pthread_mutex_lock(&region_mutex);
+        pthread_mutex_lock(&region_mutex); //lock for last region
+        
         last_region = msg->region;
+
+        pthread_rwlock_rdlock(&rwlocks[msg->region]); //lock region for reading
 
         pthread_mutex_lock(&wait_mutex[msg->region]);
         pthread_cond_broadcast(&wait_cond[msg->region]);
@@ -60,6 +63,7 @@ void requestHandler(CBMessage *msg, int client)
             pthread_cond_signal(&lower_cond);
             pthread_mutex_unlock(&lower_mutex);
         } else {
+            pthread_rwlock_unlock(&rwlocks[msg->region]);
             pthread_mutex_unlock(&region_mutex);
         }
         break;
